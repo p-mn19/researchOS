@@ -1,7 +1,9 @@
 fastapi
 uvicorn
+python-multipart
 pymongo
 pydantic
 pydantic-settings
-python-multipart
-dnspython
+pymupdf
+sentence-transformers
+chromadb
