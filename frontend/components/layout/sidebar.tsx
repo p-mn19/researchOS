@@ -2,13 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  GitCompareArrows,
-  Search,
-  FlaskConical,
-  FileText,
-} from "lucide-react";
+import { LayoutDashboard, GitCompareArrows, Search, FlaskConical } from "lucide-react";
 import clsx from "clsx";
 
 const items = [
@@ -21,7 +15,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-72 flex-col border-r border-slate-200 bg-sidebar px-5 py-6 md:flex">
+    <aside className="hidden w-72 flex-col border-r border-slate-200 bg-slate-50 px-5 py-6 md:flex">
       <div className="mb-8 flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md">
           <FlaskConical className="h-5 w-5" />

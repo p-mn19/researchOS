@@ -4,15 +4,9 @@
   --background: #f8fbff;
   --foreground: #0f172a;
   --card: #ffffff;
-  --card-2: #fdfefe;
   --border: #dbe4ee;
   --muted: #64748b;
   --primary: #2563eb;
-  --primary-soft: #dbeafe;
-  --success: #0f766e;
-  --success-soft: #ccfbf1;
-  --warning: #b45309;
-  --warning-soft: #fef3c7;
   --sidebar: #eef4ff;
 }
 
@@ -49,44 +43,4 @@ select {
 
 table {
   border-collapse: collapse;
-}
-
-@layer utilities {
-  .bg-app {
-    background-color: var(--background);
-  }
-
-  .bg-card {
-    background-color: var(--card);
-  }
-
-  .bg-card-soft {
-    background-color: var(--card-2);
-  }
-
-  .bg-sidebar {
-    background-color: var(--sidebar);
-  }
-
-  .text-main {
-    color: var(--foreground);
-  }
-
-  .text-muted {
-    color: var(--muted);
-  }
-
-  .border-soft {
-    border-color: var(--border);
-  }
-
-  .shadow-soft {
-    box-shadow:
-      0 8px 24px rgba(15, 23, 42, 0.06),
-      0 2px 8px rgba(15, 23, 42, 0.04);
-  }
-
-  .ring-soft {
-    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
-  }
 }

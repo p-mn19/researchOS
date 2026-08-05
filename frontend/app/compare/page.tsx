@@ -5,6 +5,7 @@ import { AppShell } from "@/components/layout/app_shell";
 import { getPapers, comparePapers } from "@/lib/api";
 import { CompareRow, Paper } from "@/lib/types";
 import { GitCompareArrows, CheckCircle2 } from "lucide-react";
+import { CompareTable } from "@/components/compare/compare_table";
 
 export default function ComparePage() {
   const [papers, setPapers] = useState<Paper[]>([]);
@@ -57,7 +58,7 @@ export default function ComparePage() {
   return (
     <AppShell>
       <div className="space-y-8">
-        <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-soft">
+        <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
               <div className="mb-3 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
@@ -92,7 +93,7 @@ export default function ComparePage() {
                     onClick={() => togglePaper(paper.id)}
                     className={`rounded-2xl border p-5 text-left transition ${
                       active
-                        ? "border-blue-200 bg-blue-50 ring-soft"
+                        ? "border-blue-200 bg-blue-50 ring-1 ring-blue-100"
                         : "border-slate-200 bg-white hover:border-blue-100 hover:bg-slate-50"
                     }`}
                   >
@@ -102,9 +103,7 @@ export default function ComparePage() {
                           {paper.title || "Untitled paper"}
                         </h3>
                         <p className="mt-2 text-sm text-slate-500">{paper.filename}</p>
-                        <p className="mt-1 text-xs text-slate-400">
-                          {paper.year || "Year unavailable"}
-                        </p>
+                        <p className="mt-1 text-xs text-slate-400">{paper.year || "Year unavailable"}</p>
                       </div>
 
                       {active && <CheckCircle2 className="h-5 w-5 shrink-0 text-blue-600" />}
@@ -130,52 +129,7 @@ export default function ComparePage() {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white shadow-soft">
-          <div className="border-b border-slate-200 px-6 py-5">
-            <h3 className="text-lg font-semibold text-slate-900">Comparison table</h3>
-            <p className="text-sm text-slate-500">
-              Structured output across selected research papers
-            </p>
-          </div>
-
-          {rows.length === 0 ? (
-            <div className="px-6 py-10 text-center text-slate-500">
-              No comparison generated yet.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead className="bg-slate-50">
-                  <tr className="text-left text-sm text-slate-500">
-                    <th className="px-6 py-4 font-medium">Field</th>
-                    {selectedPapers.map((paper) => (
-                      <th key={paper.id} className="px-6 py-4 font-medium">
-                        <div className="max-w-[220px]">
-                          <p className="line-clamp-2 font-semibold text-slate-700">{paper.title}</p>
-                          <p className="mt-1 text-xs text-slate-400">{paper.filename}</p>
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.field} className="border-t border-slate-100 align-top">
-                      <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-900">
-                        {row.field}
-                      </td>
-                      {selectedPapers.map((paper) => (
-                        <td key={paper.id} className="px-6 py-4 text-sm leading-6 text-slate-600">
-                          {row.values[paper.id] || "—"}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+        <CompareTable rows={rows} selectedPapers={selectedPapers} />
       </div>
     </AppShell>
   );

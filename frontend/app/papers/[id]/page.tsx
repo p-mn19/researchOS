@@ -112,16 +112,16 @@ export default function PaperDetailPage() {
         </div>
 
         {loading ? (
-          <div className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-500 shadow-soft">
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-500 shadow-sm">
             Loading paper...
           </div>
         ) : !paper ? (
-          <div className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-500 shadow-soft">
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-500 shadow-sm">
             Paper not found.
           </div>
         ) : (
           <>
-            <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-soft">
+            <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
               <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="max-w-3xl">
                   <div className="mb-3 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
@@ -147,9 +147,7 @@ export default function PaperDetailPage() {
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs uppercase tracking-wide text-slate-400">Status</p>
-                    <p className="mt-2 text-lg font-semibold capitalize text-slate-900">
-                      {paper.status}
-                    </p>
+                    <p className="mt-2 text-lg font-semibold capitalize text-slate-900">{paper.status}</p>
                   </div>
                   <button
                     onClick={handleParse}
@@ -169,22 +167,17 @@ export default function PaperDetailPage() {
               </div>
             </section>
 
-            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-soft">
+            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5">
                 <h2 className="text-xl font-semibold text-slate-900">Structured extraction</h2>
-                <p className="text-sm text-slate-500">
-                  Key fields extracted from the paper
-                </p>
+                <p className="text-sm text-slate-500">Key fields extracted from the paper</p>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {extractedCards.map((item) => {
                   const Icon = item.icon;
                   return (
-                    <div
-                      key={item.label}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
-                    >
+                    <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                       <div className="mb-3 flex items-center gap-3">
                         <div className="rounded-xl bg-white p-2 shadow-sm">
                           <Icon className="h-4 w-4 text-blue-600" />
@@ -200,12 +193,10 @@ export default function PaperDetailPage() {
               </div>
             </section>
 
-            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-soft">
+            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5">
                 <h2 className="text-xl font-semibold text-slate-900">Semantic search</h2>
-                <p className="text-sm text-slate-500">
-                  Search relevant chunks from this paper
-                </p>
+                <p className="text-sm text-slate-500">Search relevant chunks from this paper</p>
               </div>
 
               <div className="flex flex-col gap-3 md:flex-row">
@@ -231,10 +222,7 @@ export default function PaperDetailPage() {
                   </div>
                 ) : (
                   results.map((chunk) => (
-                    <div
-                      key={chunk.id}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
-                    >
+                    <div key={chunk.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                         <span className="rounded-full bg-white px-3 py-1">
                           {chunk.section_title || "Section"}

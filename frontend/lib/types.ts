@@ -9,6 +9,9 @@ export interface Paper {
   abstract?: string;
   uploaded_at?: string;
   status: PaperStatus;
+  methodology?: string;
+  dataset?: string;
+  limitations?: string;
 }
 
 export interface Extraction {

@@ -13,7 +13,7 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || "Request failed");
+    throw new Error(`API ${res.status}: ${text || "Request failed"}`);
   }
 
   return res.json();
@@ -22,6 +22,7 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
 export const getPapers = () => api<Paper[]>("/papers");
 export const getPaper = (id: string) => api<Paper>(`/papers/${id}`);
 export const getExtraction = (id: string) => api<Extraction>(`/papers/${id}/extraction`);
+
 export const searchPaper = (id: string, query: string) =>
   api<ChunkResult[]>(`/papers/${id}/search`, {
     method: "POST",
@@ -45,7 +46,11 @@ export async function uploadPaper(file: File) {
     body: formData,
   });
 
-  if (!res.ok) throw new Error("Upload failed");
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Upload failed");
+  }
+
   return res.json();
 }
 

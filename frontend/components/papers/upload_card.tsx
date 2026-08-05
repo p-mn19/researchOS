@@ -7,25 +7,29 @@ import { UploadCloud } from "lucide-react";
 export function UploadCard({ onUploaded }: { onUploaded: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
   const handleUpload = async () => {
     if (!file) return;
 
     try {
       setLoading(true);
-      await uploadPaper(file);
+      setMessage("");
+      const result = await uploadPaper(file);
+      console.log("Upload result:", result);
       setFile(null);
+      setMessage("Upload successful");
       onUploaded();
     } catch (e) {
       console.error(e);
-      alert("Upload failed");
+      setMessage("Upload failed");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-soft">
+    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
         <UploadCloud className="h-5 w-5" />
       </div>
@@ -50,6 +54,8 @@ export function UploadCard({ onUploaded }: { onUploaded: () => void }) {
           Selected: <span className="font-medium text-slate-900">{file.name}</span>
         </p>
       )}
+
+      {message && <p className="mt-3 text-sm text-slate-600">{message}</p>}
 
       <button
         onClick={handleUpload}

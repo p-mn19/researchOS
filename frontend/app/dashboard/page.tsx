@@ -12,14 +12,17 @@ import { ArrowRight, FileText, Database, Sparkles, SearchCheck } from "lucide-re
 export default function DashboardPage() {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   async function loadPapers() {
     try {
       setLoading(true);
+      setError("");
       const data = await getPapers();
       setPapers(data);
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
+      setError("Could not connect to backend. Start FastAPI on port 8000.");
     } finally {
       setLoading(false);
     }
@@ -30,8 +33,8 @@ export default function DashboardPage() {
   }, []);
 
   const total = papers.length;
-  const parsed = papers.filter((p) => p.status === "parsed" || p.status === "indexed" || p.status === "extracted").length;
-  const indexed = papers.filter((p) => p.status === "indexed" || p.status === "extracted").length;
+  const parsed = papers.filter((p) => ["parsed", "indexed", "extracted"].includes(p.status)).length;
+  const indexed = papers.filter((p) => ["indexed", "extracted"].includes(p.status)).length;
   const extracted = papers.filter((p) => p.status === "extracted").length;
 
   const stats = [
@@ -44,8 +47,14 @@ export default function DashboardPage() {
   return (
     <AppShell>
       <div className="space-y-8">
+        {error && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
+        )}
+
         <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-soft">
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="max-w-2xl">
               <div className="mb-4 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
                 Research pipeline
@@ -67,10 +76,7 @@ export default function DashboardPage() {
           {stats.map((stat) => {
             const Icon = stat.icon;
             return (
-              <div
-                key={stat.label}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft"
-              >
+              <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm text-slate-500">{stat.label}</p>
@@ -85,18 +91,16 @@ export default function DashboardPage() {
           })}
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white shadow-soft">
+        <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Paper library</h3>
-              <p className="text-sm text-slate-500">
-                Uploaded papers and processing status
-              </p>
+              <p className="text-sm text-slate-500">Uploaded papers and processing status</p>
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-full">
+            <table className="min-w-full table-fixed">
               <thead className="bg-slate-50">
                 <tr className="text-left text-sm text-slate-500">
                   <th className="px-6 py-4 font-medium">Title</th>
@@ -123,9 +127,11 @@ export default function DashboardPage() {
                   papers.map((paper) => (
                     <tr key={paper.id} className="border-t border-slate-100">
                       <td className="px-6 py-4 font-medium text-slate-900">
-                        {paper.title || "Untitled paper"}
+                        <div className="max-w-[260px] truncate">{paper.title || "Untitled paper"}</div>
                       </td>
-                      <td className="px-6 py-4 text-slate-600">{paper.filename}</td>
+                      <td className="px-6 py-4 text-slate-600">
+                        <div className="max-w-[260px] truncate">{paper.filename}</div>
+                      </td>
                       <td className="px-6 py-4">
                         <PaperStatusBadge status={paper.status} />
                       </td>
