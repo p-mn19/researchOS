@@ -35,3 +35,19 @@ export interface CompareRow {
   field: string;
   values: Record<string, string>;
 }
+
+export interface SearchResult {
+  paper_id: string;
+  paper_title: string;
+  filename?: string;
+  section_title?: string;
+  page?: number;
+  text: string;
+  score?: number;
+}
+
+export interface SemanticSearchResponse {
+  query: string;
+  count: number;
+  results: SearchResult[];
+}

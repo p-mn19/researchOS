@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/app_shell";
 import { getPapers, comparePapers } from "@/lib/api";
 import { CompareRow, Paper } from "@/lib/types";
@@ -13,15 +13,18 @@ export default function ComparePage() {
   const [rows, setRows] = useState<CompareRow[]>([]);
   const [loadingPapers, setLoadingPapers] = useState(true);
   const [loadingCompare, setLoadingCompare] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function load() {
       try {
         setLoadingPapers(true);
+        setError("");
         const data = await getPapers();
         setPapers(data);
       } catch (err) {
         console.error(err);
+        setError("Failed to load papers.");
       } finally {
         setLoadingPapers(false);
       }
@@ -37,23 +40,27 @@ export default function ComparePage() {
 
   async function handleCompare() {
     if (selected.length < 2) {
-      alert("Select at least 2 papers to compare");
+      setError("Select at least 2 papers to compare.");
       return;
     }
 
     try {
       setLoadingCompare(true);
+      setError("");
       const data = await comparePapers(selected);
       setRows(data);
     } catch (err) {
       console.error(err);
-      alert("Comparison failed");
+      setError("Comparison failed.");
     } finally {
       setLoadingCompare(false);
     }
   }
 
-  const selectedPapers = papers.filter((p) => selected.includes(p.id));
+  const selectedPapers = useMemo(
+    () => papers.filter((p) => selected.includes(p.id)),
+    [papers, selected]
+  );
 
   return (
     <AppShell>
@@ -78,6 +85,12 @@ export default function ComparePage() {
             </div>
           </div>
 
+          {error ? (
+            <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
+
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {loadingPapers ? (
               <div className="text-sm text-slate-500">Loading papers...</div>
@@ -88,27 +101,31 @@ export default function ComparePage() {
                 const active = selected.includes(paper.id);
 
                 return (
-                  <button
-                    key={paper.id}
-                    onClick={() => togglePaper(paper.id)}
-                    className={`rounded-2xl border p-5 text-left transition ${
-                      active
-                        ? "border-blue-200 bg-blue-50 ring-1 ring-blue-100"
-                        : "border-slate-200 bg-white hover:border-blue-100 hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="line-clamp-2 text-base font-semibold text-slate-900">
-                          {paper.title || "Untitled paper"}
-                        </h3>
-                        <p className="mt-2 text-sm text-slate-500">{paper.filename}</p>
-                        <p className="mt-1 text-xs text-slate-400">{paper.year || "Year unavailable"}</p>
-                      </div>
+                    <button
+    key={paper.id}
+    onClick={() => togglePaper(paper.id)}
+    className={`min-w-0 rounded-2xl border p-5 text-left transition ${
+      active
+        ? "border-blue-200 bg-blue-50 ring-1 ring-blue-100"
+        : "border-slate-200 bg-white hover:border-blue-100 hover:bg-slate-50"
+    }`}
+  >
+    <div className="flex min-w-0 items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <h3 className="line-clamp-2 break-words text-base font-semibold text-slate-900">
+          {paper.title || "Untitled paper"}
+        </h3>
+        <p className="mt-2 break-all text-sm text-slate-500">
+          {paper.filename}
+        </p>
+        <p className="mt-1 text-xs text-slate-400">
+          {paper.year || "Year unavailable"}
+        </p>
+      </div>
 
-                      {active && <CheckCircle2 className="h-5 w-5 shrink-0 text-blue-600" />}
-                    </div>
-                  </button>
+      {active && <CheckCircle2 className="h-5 w-5 shrink-0 text-blue-600" />}
+    </div>
+  </button>
                 );
               })
             )}

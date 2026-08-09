@@ -2,8 +2,11 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-app = FastAPI(title="ResearchOS API")
+from app.api.routes.search import router as search_router
 
+app = FastAPI(title="ResearchOS Backend")
+
+app.include_router(search_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
