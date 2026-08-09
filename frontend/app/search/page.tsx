@@ -1,46 +1,67 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/app_shell";
-import { semanticSearch } from "@/lib/api";
-import { SearchResult } from "@/lib/types";
-import { Search, Loader2 } from "lucide-react";
+import { Search, FileText, ArrowRight } from "lucide-react";
+import Link from "next/link";
+
+const PAPERS = [
+  {
+    id: "1",
+    title: "The Kepler end-to-end data pipeline from photons to planets",
+    filename: "The_Kepler_end-to-end_data_pipeline_from_photons_to_planets.pdf",
+    year: 2024,
+    tags: ["dataset", "pipeline", "astronomy", "photons", "planets"],
+  },
+  {
+    id: "2",
+    title: "AstroFusion: A GAN-Augmented Approach for Exoplanet Detection",
+    filename: "AstroFusion_A_GAN-Augmented_Approach_for_Exoplanet_Detection.pdf",
+    year: 2023,
+    tags: ["architecture", "gan", "exoplanet", "detection", "augmentation"],
+  },
+  {
+    id: "3",
+    title: "A Study of Light Intensity of Stars for Exoplanet Detection",
+    filename: "A_Study_of_Light_Intensity_of_Stars_for_Exoplanet_Detection.pdf",
+    year: 2026,
+    tags: ["light intensity", "stars", "exoplanet", "analysis", "dataset"],
+  },
+  {
+    id: "4",
+    title: "Statistical and Machine Learning Perspectives on Exoplanet Detection",
+    filename: "Statistical_and_Machine_Learning_Perspectives_on_Exoplanet_Detection.pdf",
+    year: 2026,
+    tags: ["machine learning", "statistics", "review", "detection", "survey"],
+  },
+  {
+    id: "5",
+    title: "AI-Driven Research Assistant for Automated Summarization of Generative AI Flaws",
+    filename: "AI-Driven-Research-Assistant-for-Automated-Summarization-of-Generative-AI-Flaws.pdf",
+    year: 2026,
+    tags: ["ai assistant", "summarization", "review", "limitations", "automation"],
+  },
+  {
+    id: "6",
+    title: "Transformative Automation in Scientific Literature Review",
+    filename: "Transformative_Automation_in_Scientific_Literature_Review.pdf",
+    year: 2026,
+    tags: ["literature review", "automation", "research", "workflow", "review"],
+  },
+];
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [searchedQuery, setSearchedQuery] = useState("");
 
-  async function handleSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const filteredPapers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return PAPERS;
 
-    const trimmedQuery = query.trim();
-
-    if (!trimmedQuery) {
-      setError("Enter a search query.");
-      setResults([]);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError("");
-      setResults([]);
-
-      const response = await semanticSearch(trimmedQuery, undefined, 5);
-
-      setResults(response.results || []);
-      setSearchedQuery(response.query);
-    } catch (err) {
-      console.error(err);
-      setError("Search failed. Make sure the backend is running.");
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
-  }
+    return PAPERS.filter((paper) => {
+      const haystack = `${paper.title} ${paper.filename} ${paper.year} ${paper.tags.join(" ")}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [query]);
 
   return (
     <AppShell>
@@ -56,118 +77,75 @@ export default function SearchPage() {
                 Global semantic search
               </h1>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Search across the indexed research-paper corpus.
+                Search available papers by topic, method, dataset, or keyword.
               </p>
             </div>
           </div>
 
-          <form
-            onSubmit={handleSearch}
-            className="flex flex-col gap-3 sm:flex-row"
-          >
+          <div className="flex flex-col gap-3 sm:flex-row">
             <input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Ask something about your research papers..."
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search papers by topic, dataset, method..."
               className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
             />
 
             <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              type="button"
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-blue-700"
             >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Searching...
-                </>
-              ) : (
-                <>
-                  <Search className="h-4 w-4" />
-                  Search
-                </>
-              )}
+              <Search className="h-4 w-4" />
+              Search
             </button>
-          </form>
-
-          {error ? (
-            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          ) : null}
+          </div>
         </section>
 
-        {searchedQuery && !loading ? (
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  Search results
-                </h2>
-                <p className="text-sm text-slate-500">
-                  Results for:{" "}
-                  <span className="font-medium text-slate-700">
-                    “{searchedQuery}”
-                  </span>
-                </p>
-              </div>
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-slate-900">
+              Available papers
+            </h2>
+            <p className="text-sm text-slate-500">
+              {filteredPapers.length} paper{filteredPapers.length === 1 ? "" : "s"} found
+            </p>
+          </div>
 
-              <span className="text-sm text-slate-500">
-                {results.length} result{results.length === 1 ? "" : "s"}
-              </span>
+          {filteredPapers.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 px-5 py-10 text-center text-sm text-slate-500">
+              No matching papers found.
             </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredPapers.map((paper) => (
+                <Link
+                  key={paper.id}
+                  href={`/papers/${paper.id}`}
+                  className="group rounded-2xl border border-slate-200 bg-slate-50 p-5 transition hover:border-blue-200 hover:bg-blue-50"
+                >
+                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-blue-700 shadow-sm">
+                    <FileText className="h-5 w-5" />
+                  </div>
 
-            {results.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 px-5 py-8 text-center text-sm text-slate-500">
-                No matching results were found in the uploaded papers.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {results.map((result, index) => (
-                  <article
-                    key={`${result.paper_id}-${result.page ?? "page"}-${index}`}
-                    className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-5"
-                  >
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      {result.section_title ? (
-                        <span className="rounded-full bg-white px-3 py-1 text-xs text-slate-600">
-                          {result.section_title}
-                        </span>
-                      ) : null}
+                  <h3 className="line-clamp-2 break-words text-base font-semibold text-slate-900">
+                    {paper.title}
+                  </h3>
 
-                      {result.page !== undefined ? (
-                        <span className="rounded-full bg-white px-3 py-1 text-xs text-slate-600">
-                          Page {result.page}
-                        </span>
-                      ) : null}
+                  <p className="mt-2 break-all text-sm text-slate-500">
+                    {paper.filename}
+                  </p>
 
-                      {result.score !== undefined ? (
-                        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-700">
-                          Score {result.score.toFixed(2)}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <h3 className="mt-4 break-words text-base font-semibold text-slate-900">
-                      {result.paper_title}
-                    </h3>
-
-                    {result.filename ? (
-                      <p className="mt-1 break-all text-xs text-slate-500">
-                        {result.filename}
-                      </p>
-                    ) : null}
-
-                    <p className="mt-4 break-words whitespace-pre-wrap text-sm leading-7 text-slate-700">
-                      {result.text}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-        ) : null}
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="text-xs text-slate-400">{paper.year}</span>
+                    <span className="inline-flex items-center gap-1 text-sm font-medium text-blue-700">
+                      Open
+                      <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </AppShell>
   );

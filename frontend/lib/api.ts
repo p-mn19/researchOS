@@ -1,53 +1,111 @@
-import { CompareRow, Extraction, Paper, ChunkResult, SearchResult } from "./types";
+import {
+  ChunkResult,
+  CompareRow,
+  Extraction,
+  Paper,
+  ReviewReport,
+  SearchResult,
+} from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
+const API_BASE =
+  (process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000").replace(/\/+$/, "");
 
 async function api(path: string, options?: RequestInit): Promise<any> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      ...(options?.headers || {}),
-    },
-    cache: "no-store",
-  });
+  const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${res.status}: ${text || "Request failed"}`);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      cache: "no-store",
+      headers: {
+        ...(options?.headers || {}),
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `API ${response.status}: ${text || "Request failed"}`
+      );
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Failed to fetch ${url}: ${error.message}`);
+    }
+    throw new Error(`Failed to fetch ${url}`);
   }
-
-  return res.json();
 }
 
-export const getPapers = () => api("/papers") as Promise<Paper[]>;
-export const getPaper = (id: string) => api(`/papers/${id}`) as Promise<Paper>;
-export const getExtraction = (id: string) => api(`/papers/${id}/extraction`) as Promise<Extraction>;
+function normalizePaper(raw: any): Paper {
+  return {
+    id: String(raw.id ?? raw._id ?? raw.paper_id ?? ""),
+    title: raw.title ?? "",
+    filename: raw.filename ?? raw.original_filename ?? "",
+    authors: raw.authors ?? [],
+    year: raw.year ?? raw.publication_year ?? null,
+    abstract: raw.abstract ?? "",
+    uploaded_at: raw.uploaded_at ?? raw.uploadedAt,
+    status: raw.status ?? "uploaded",
+    methodology: raw.methodology,
+    dataset: raw.dataset,
+    limitations: raw.limitations,
+  };
+}
+
+export const getPapers = async (): Promise<Paper[]> => {
+  const response = await api("/papers/");
+
+  const rawPapers = Array.isArray(response)
+    ? response
+    : response.papers ?? response.data ?? [];
+
+  return rawPapers
+    .map(normalizePaper)
+    .filter((paper: Paper) => paper.id.length > 0);
+};
+
+export const getPaper = (id: string) =>
+  api(`/papers/${encodeURIComponent(id)}`) as Promise<Paper>;
+
+export const getExtraction = (id: string) =>
+  api(`/papers/${encodeURIComponent(id)}/extraction`) as Promise<Extraction>;
 
 export const searchPaper = (id: string, query: string) =>
-  api(`/papers/${id}/search`, {
+  api(`/papers/${encodeURIComponent(id)}/search`, {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ query }),
-    headers: { "Content-Type": "application/json" },
   }) as Promise<ChunkResult[]>;
 
-export interface SemanticSearchResponse {
-  query: string;
-  count: number;
-  results: SearchResult[];
-}
-
-export const comparePapers = (paperIds: string[]) =>
-  api("/compare", {
+export const comparePapers = async (
+  paperIds: string[]
+): Promise<CompareRow[]> => {
+  const response = await api("/compare", {
     method: "POST",
-    body: JSON.stringify({ paper_ids: paperIds }),
-    headers: { "Content-Type": "application/json" },
-  }) as Promise<CompareRow[]>;
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      paper_ids: paperIds,
+    }),
+  });
+
+  return Array.isArray(response) ? response : response.rows ?? [];
+};
 
 export const semanticSearch = async (
   query: string,
   paperIds?: string[],
   topK = 5
-): Promise<SemanticSearchResponse> => {
+): Promise<{
+  query: string;
+  count: number;
+  results: SearchResult[];
+}> => {
   return api("/search/query", {
     method: "POST",
     headers: {
@@ -61,25 +119,47 @@ export const semanticSearch = async (
   });
 };
 
+export const generateReview = async (
+  paperId: string
+): Promise<ReviewReport> => {
+  const normalizedId = String(paperId ?? "").trim();
+
+  if (
+    !normalizedId ||
+    normalizedId === "undefined" ||
+    normalizedId === "null"
+  ) {
+    throw new Error("The selected paper has no valid ID.");
+  }
+
+  return api(`/reviews/${encodeURIComponent(normalizedId)}`, {
+    method: "POST",
+  });
+};
+
 export async function uploadPaper(file: File) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${API_BASE}/papers/upload`, {
+  const response = await fetch(`${API_BASE}/papers/upload`, {
     method: "POST",
     body: formData,
   });
 
-  if (!res.ok) {
-    const text = await res.text();
+  if (!response.ok) {
+    const text = await response.text();
     throw new Error(text || "Upload failed");
   }
 
-  return res.json();
+  return response.json();
 }
 
 export const parsePaper = (id: string) =>
-  api(`/papers/${id}/parse`, { method: "POST" });
+  api(`/papers/${encodeURIComponent(id)}/parse`, {
+    method: "POST",
+  });
 
 export const extractPaper = (id: string) =>
-  api(`/papers/${id}/extract`, { method: "POST" });
+  api(`/papers/${encodeURIComponent(id)}/extract`, {
+    method: "POST",
+  });

@@ -1,11 +1,15 @@
-export type PaperStatus = "uploaded" | "parsed" | "indexed" | "extracted";
+export type PaperStatus =
+  | "uploaded"
+  | "parsed"
+  | "indexed"
+  | "extracted";
 
 export interface Paper {
   id: string;
   title: string;
   filename: string;
   authors?: string[];
-  year?: number;
+  year?: number | null;
   abstract?: string;
   uploaded_at?: string;
   status: PaperStatus;
@@ -50,4 +54,21 @@ export interface SemanticSearchResponse {
   query: string;
   count: number;
   results: SearchResult[];
+}
+
+export interface ReviewDimension {
+  id: string;
+  title: string;
+  score: string;
+  concern: "None" | "Moderate" | "Major" | "Critical";
+  evidence: string;
+  suggestion: string;
+}
+
+export interface ReviewReport {
+  paperId: string;
+  paperTitle: string;
+  overallScore: string;
+  summary: string;
+  dimensions: ReviewDimension[];
 }

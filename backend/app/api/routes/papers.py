@@ -1,6 +1,12 @@
 from typing import List
+
 from fastapi import APIRouter, File, UploadFile
-from app.schemas.paper import PaperStatusUpdate, PaperCreateResponse, PaperResponse
+
+from app.schemas.paper import (
+    PaperCreateResponse,
+    PaperResponse,
+    PaperStatusUpdate,
+)
 from app.services.paper_service import (
     create_paper_record,
     get_all_papers,
@@ -8,7 +14,11 @@ from app.services.paper_service import (
     update_paper_status,
 )
 
-router = APIRouter(prefix="/papers", tags=["papers"])
+
+router = APIRouter(
+    prefix="/papers",
+    tags=["papers"],
+)
 
 
 @router.post("/upload", response_model=PaperCreateResponse)
@@ -27,5 +37,8 @@ def get_paper(paper_id: str):
 
 
 @router.patch("/{paper_id}/status", response_model=PaperResponse)
-def change_paper_status(paper_id: str, payload: PaperStatusUpdate):
+def change_paper_status(
+    paper_id: str,
+    payload: PaperStatusUpdate,
+):
     return update_paper_status(paper_id, payload.status)

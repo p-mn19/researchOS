@@ -1,5 +1,7 @@
-from typing import Optional, List
-from pydantic import BaseModel
+from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict
 
 
 class PaperStatusUpdate(BaseModel):
@@ -7,28 +9,23 @@ class PaperStatusUpdate(BaseModel):
 
 
 class PaperCreateResponse(BaseModel):
-    message: str
-    paper_id: str
-    status: str
+    id: str
     filename: str
+    title: str
+    status: str
 
 
 class PaperResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
-    original_filename: str
-    stored_filename: str
-    file_path: str
-    content_type: Optional[str] = None
-    file_size: Optional[int] = None
-
-    title: Optional[str] = None
-    authors: Optional[List[str]] = None
-    publication_year: Optional[int] = None
-    abstract: Optional[str] = None
-    keywords: Optional[List[str]] = None
-    references: Optional[List[str]] = None
-
-    status: str
-    error_message: Optional[str] = None
-    created_at: str
-    updated_at: str
+    filename: str
+    title: str = ""
+    authors: List[str] = []
+    year: Optional[int] = None
+    abstract: str = ""
+    uploaded_at: Optional[datetime] = None
+    status: str = "uploaded"
+    methodology: Optional[str] = None
+    dataset: Optional[str] = None
+    limitations: Optional[str] = None
