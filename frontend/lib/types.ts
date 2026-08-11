@@ -29,8 +29,9 @@ export interface Extraction {
 
 export interface ChunkResult {
   id: string;
-  section_title?: string;
-  page?: number;
+  section_title?: string | null;
+  page?: number | null;
+  page_number?: number | null;
   text: string;
   score?: number;
 }

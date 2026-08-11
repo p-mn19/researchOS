@@ -71,30 +71,40 @@ export const getPaper = (id: string) =>
 
 export const getExtraction = (id: string) =>
   api(`/papers/${encodeURIComponent(id)}/extraction`) as Promise<Extraction>;
-
-export const searchPaper = (id: string, query: string) =>
-  api(`/papers/${encodeURIComponent(id)}/search`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query }),
-  }) as Promise<ChunkResult[]>;
-
-export const comparePapers = async (
-  paperIds: string[]
-): Promise<CompareRow[]> => {
-  const response = await api("/compare", {
+export const searchPaper = async (
+  id: string,
+  query: string
+): Promise<ChunkResult[]> => {
+  const response = await api(`/papers/${encodeURIComponent(id)}/search`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      paper_ids: paperIds,
+      query,
+      top_k: 5,
     }),
   });
 
-  return Array.isArray(response) ? response : response.rows ?? [];
+  const results = Array.isArray(response)
+    ? response
+    : response.results ?? [];
+
+  return results.map((chunk: any) => ({
+    ...chunk,
+    page:
+      chunk.page ??
+      chunk.page_number ??
+      chunk.page_no ??
+      chunk.pageno ??
+      chunk.pageNum ??
+      null,
+    section_title:
+      chunk.section_title ??
+      chunk.section ??
+      chunk.section_name ??
+      "",
+  }));
 };
 
 export const semanticSearch = async (
@@ -155,11 +165,29 @@ export async function uploadPaper(file: File) {
 }
 
 export const parsePaper = (id: string) =>
-  api(`/papers/${encodeURIComponent(id)}/parse`, {
+  api(`/papers/${id}/parse`, {
     method: "POST",
   });
 
 export const extractPaper = (id: string) =>
-  api(`/papers/${encodeURIComponent(id)}/extract`, {
+  api(`/papers/${id}/extract`, {
     method: "POST",
   });
+
+export const comparePapers = async (
+  paperIds: string[]
+): Promise<CompareRow[]> => {
+  const response = await api("/compare", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      paper_ids: paperIds,
+    }),
+  });
+
+  return Array.isArray(response)
+    ? response
+    : response.rows ?? [];
+};

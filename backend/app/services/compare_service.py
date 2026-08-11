@@ -1,31 +1,131 @@
+from typing import Any, Dict, List
+
 from bson import ObjectId
+
 from app.db import extractions_collection, papers_collection
 
 
-def compare_papers(paper_ids):
+COMPARE_FIELDS = [
+    "methodology",
+    "dataset",
+    "evaluation_metric",
+    "limitations",
+    "future_work",
+]
+
+
+def _text(value: Any) -> str:
+    if value is None:
+        return ""
+
+    if isinstance(value, list):
+        return ", ".join(str(item) for item in value)
+
+    return str(value).strip()
+
+
+def _paper_query_ids(paper_ids: List[str]) -> List[Any]:
+    values = []
+
+    for paper_id in paper_ids:
+        value = str(paper_id).strip()
+
+        if ObjectId.is_valid(value):
+            values.append(ObjectId(value))
+        else:
+            values.append(value)
+
+    return values
+
+
+def compare_papers(paper_ids: List[str]) -> Dict[str, Any]:
+    paper_ids = [
+        str(paper_id).strip()
+        for paper_id in paper_ids
+        if str(paper_id).strip()
+    ]
+
+    if len(paper_ids) < 2:
+        raise ValueError("At least two papers are required")
+
+    if len(paper_ids) > 4:
+        raise ValueError("A maximum of four papers can be compared")
+
+    query_ids = _paper_query_ids(paper_ids)
+
+    paper_documents = list(
+        papers_collection.find(
+            {
+                "_id": {
+                    "$in": query_ids,
+                }
+            }
+        )
+    )
+
+    paper_map: Dict[str, str] = {}
+
+    for paper in paper_documents:
+        paper_id = str(paper["_id"])
+
+        paper_map[paper_id] = (
+            paper.get("title")
+            or paper.get("filename")
+            or "Untitled paper"
+        )
+
+    extraction_documents = list(
+        extractions_collection.find(
+            {
+                "$or": [
+                    {"paper_id": {"$in": paper_ids}},
+                    {"paper_id": {"$in": query_ids}},
+                ]
+            }
+        )
+    )
+
+    extraction_map: Dict[str, Dict[str, Any]] = {}
+
+    for extraction in extraction_documents:
+        raw_paper_id = extraction.get("paper_id")
+
+        if raw_paper_id is None:
+            continue
+
+        extraction_map[str(raw_paper_id)] = extraction
+
     rows = []
-    extracted_docs = list(extractions_collection.find({"paper_id": {"$in": paper_ids}}))
-    paper_map = {}
 
-    object_ids = [ObjectId(pid) for pid in paper_ids if ObjectId.is_valid(pid)]
-    for p in papers_collection.find({"_id": {"$in": object_ids}}):
-        paper_map[str(p["_id"])] = p.get("title") or p.get("filename") or "Untitled paper"
+    for field in COMPARE_FIELDS:
+        row_values: Dict[str, str] = {}
 
-    fields = ["methodology", "dataset", "evaluation_metric", "limitations", "future_work"]
+        for paper_id in paper_ids:
+            extraction = extraction_map.get(paper_id, {})
+            value = extraction.get(field, "")
 
-    for field in fields:
-        row = {"field": field, "values": {}}
+            if not value:
+                matching_document = next(
+                    (
+                        paper
+                        for paper in paper_documents
+                        if str(paper["_id"]) == paper_id
+                    ),
+                    {},
+                )
 
-        for pid in paper_ids:
-            paper_title = paper_map.get(pid, pid)
-            row["values"][paper_title] = "—"
+                value = matching_document.get(field, "")
 
-        for doc in extracted_docs:
-            pid = doc.get("paper_id")
-            paper_title = paper_map.get(pid, pid)
-            value = doc.get(field, "")
-            row["values"][paper_title] = value if value else "—"
+            row_values[paper_id] = _text(value) or "—"
 
-        rows.append(row)
+        rows.append(
+            {
+                "field": field.replace("_", " ").title(),
+                "values": row_values,
+            }
+        )
 
-    return {"rows": rows, "paper_map": paper_map}
+    return {
+        "rows": rows,
+        "paper_map": paper_map,
+    }

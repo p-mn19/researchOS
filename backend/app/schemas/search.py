@@ -1,18 +1,27 @@
-from fastapi import APIRouter, HTTPException
-from app.schemas.search import SearchRequest, SearchResponse
-from app.services.search_service import semantic_search
+from typing import List, Optional
 
-router = APIRouter(prefix="/search", tags=["search"])
+from pydantic import BaseModel, Field
 
 
-@router.post("/query", response_model=SearchResponse)
-def query_search(payload: SearchRequest):
-    try:
-        results = semantic_search(payload.query, payload.paper_ids, payload.top_k or 5)
-        return {
-            "query": payload.query,
-            "top_k": payload.top_k or 5,
-            "results": results,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+class SearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    paper_ids: Optional[List[str]] = None
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+class SearchHit(BaseModel):
+    id: str
+    paper_id: str
+    paper_title: str
+    filename: Optional[str] = None
+    section_title: Optional[str] = None
+    page: Optional[int] = None
+    text: str
+    score: float
+
+
+class SearchResponse(BaseModel):
+    query: str
+    top_k: int
+    count: int
+    results: List[SearchHit]

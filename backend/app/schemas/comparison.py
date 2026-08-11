@@ -1,9 +1,10 @@
-from typing import Dict, List, Optional
+from typing import Dict, List
+
 from pydantic import BaseModel, Field
 
 
 class CompareRequest(BaseModel):
-    paper_ids: List[str] = Field(..., min_length=2, description="Paper IDs to compare")
+    paper_ids: List[str] = Field(..., min_length=2, max_length=4)
 
 
 class CompareRow(BaseModel):
@@ -13,4 +14,4 @@ class CompareRow(BaseModel):
 
 class CompareResponse(BaseModel):
     rows: List[CompareRow]
-    paper_map: Optional[Dict[str, str]] = None
+    paper_map: Dict[str, str]
