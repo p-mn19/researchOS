@@ -1,9 +1,0 @@
-fastapi
-uvicorn
-python-multipart
-pymongo
-pydantic
-pydantic-settings
-pymupdf
-sentence-transformers
-chromadb
