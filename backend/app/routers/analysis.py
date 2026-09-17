@@ -1,41 +1,84 @@
 from fastapi import APIRouter, HTTPException
-from datetime import datetime
-from bson import ObjectId
 
-from app.models.schemas import CompareRequest
-from app.services.parser_service import parse_pdf_text
-from app.services.chunk_service import chunk_paper
-from app.services.vector_service import index_paper_chunks
-from app.services.extraction_service import extract_fields_for_paper
-from app.services.compare_service import compare_papers
-from app.db import papers_collection
+from app.services.chunk_service import (
+    create_paper_chunks,
+)
+from app.services.extraction_service import (
+    extract_paper_content,
+)
+from app.services.paper_service import (
+    get_paper_by_id,
+)
+from app.services.parser_service import (
+    parse_pdf_text,
+)
 
-router = APIRouter(prefix="/analysis", tags=["analysis"])
 
-@router.post("/parse/{paper_id}")
-def parse_paper(paper_id: str):
+router = APIRouter(
+    prefix="/papers",
+    tags=["analysis"],
+)
+
+
+@router.post("/{paper_id}/parse")
+def parse_paper_route(paper_id: str):
     try:
-        result = parse_pdf_text(paper_id)
-        chunk_paper(paper_id)
-        index_paper_chunks(paper_id)
-        papers_collection.update_one(
-            {"_id": ObjectId(paper_id)},
-            {"$set": {"status": "indexed", "indexed_at": datetime.utcnow()}}
+        parse_result = parse_pdf_text(paper_id)
+        chunk_result = create_paper_chunks(paper_id)
+
+        return {
+            **parse_result,
+            **chunk_result,
+            "status": "indexed",
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Parsing and indexing failed: {str(exc)}",
+        ) from exc
+
+
+@router.post("/{paper_id}/extract")
+def extract_paper_route(paper_id: str):
+    try:
+        # Always parse again so the latest text is available.
+        parse_pdf_text(paper_id)
+
+        # Create MongoDB chunks for search and RAG.
+        chunk_result = create_paper_chunks(paper_id)
+
+        # Fetch the updated paper after parsing.
+        paper = get_paper_by_id(paper_id)
+
+        if not paper:
+            raise HTTPException(
+                status_code=404,
+                detail="Paper not found after parsing",
+            )
+
+        result = extract_paper_content(
+            paper_id=paper_id,
+            paper=paper,
         )
-        return {"ok": True, **result, "status": "indexed"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/extract/{paper_id}")
-def extract_paper(paper_id: str):
-    try:
-        return extract_fields_for_paper(paper_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "paper_id": paper_id,
+            "status": "extracted",
+            "chunks_created": chunk_result[
+                "chunks_created"
+            ],
+            "extraction": result,
+        }
 
-@router.post("/compare")
-def compare_route(payload: CompareRequest):
-    try:
-        return compare_papers(payload.paper_ids)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Extraction failed: {str(exc)}",
+        ) from exc

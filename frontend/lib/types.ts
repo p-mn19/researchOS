@@ -9,7 +9,7 @@ export interface Paper {
   title: string;
   filename: string;
   authors?: string[];
-  year?: number | null;
+  year?: number;
   abstract?: string;
   uploaded_at?: string;
   status: PaperStatus;
@@ -29,6 +29,8 @@ export interface Extraction {
 
 export interface ChunkResult {
   id: string;
+  paper_id?: string;
+  paper_title?: string;
   section_title?: string | null;
   page?: number | null;
   page_number?: number | null;
@@ -38,24 +40,39 @@ export interface ChunkResult {
 
 export interface CompareRow {
   field: string;
-  values: Record<string, string>;
+  values: Record<string, string | number | null | undefined>;
 }
 
-export interface SearchResult {
-  paper_id: string;
-  paper_title: string;
-  filename?: string;
-  section_title?: string;
+export interface AnswerSource {
+  source_number?: number;
+  paper_title?: string;
   page?: number;
-  text: string;
+  section_title?: string;
   score?: number;
 }
 
-export interface SemanticSearchResponse {
-  query: string;
-  count: number;
-  results: SearchResult[];
+export interface PaperAnswer {
+  paper_id: string;
+  question: string;
+  answer: string;
+  sources: AnswerSource[];
+  model?: string;
 }
+
+export interface LiteraturePaper {
+  source: string;
+  source_id: string;
+  title: string;
+  abstract: string;
+  authors: string[];
+  year?: number | null;
+  doi?: string | null;
+  pdf_url?: string | null;
+  citation_count?: number;
+  venue?: string | null;
+}
+
+export interface PaperMetadata extends LiteraturePaper {}
 
 export interface ReviewDimension {
   id: string;

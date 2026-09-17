@@ -4,15 +4,15 @@ import re
 import shutil
 import uuid
 
+
 from bson import ObjectId
 from fastapi import HTTPException, UploadFile
 from PyPDF2 import PdfReader
-
+from app.config import STORAGE_DIR
 from app.config import settings
 from app.db import papers_collection
 
 
-STORAGE_DIR = Path(settings.storage_dir)
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -61,16 +61,90 @@ def _validate_object_id(paper_id: str) -> ObjectId:
 def _serialize_paper(document: dict) -> dict:
     return {
         "id": str(document["_id"]),
-        "filename": document.get("filename", ""),
-        "title": document.get("title", ""),
-        "authors": document.get("authors", []),
+        "filename": document.get(
+            "filename",
+            "",
+        ),
+        "stored_filename": document.get(
+            "stored_filename",
+            "",
+        ),
+        "filepath": document.get(
+            "filepath",
+            "",
+        ),
+        "title": document.get(
+            "title",
+            "",
+        ),
+        "authors": document.get(
+            "authors",
+            [],
+        ),
         "year": document.get("year"),
-        "abstract": document.get("abstract", ""),
-        "uploaded_at": document.get("uploaded_at"),
-        "status": document.get("status", "uploaded"),
-        "methodology": document.get("methodology"),
-        "dataset": document.get("dataset"),
-        "limitations": document.get("limitations"),
+        "abstract": document.get(
+            "abstract",
+            "",
+        ),
+        "keywords": document.get(
+            "keywords",
+            [],
+        ),
+        "references": document.get(
+            "references",
+            [],
+        ),
+        "status": document.get(
+            "status",
+            "uploaded",
+        ),
+        "raw_text": document.get(
+            "raw_text",
+            "",
+        ),
+        "text": document.get(
+            "text",
+            "",
+        ),
+        "pages": document.get(
+            "pages",
+            [],
+        ),
+        # Extraction fields
+        "methodology": document.get(
+            "methodology",
+        ),
+        "dataset": document.get(
+            "dataset",
+        ),
+        "limitations": document.get(
+            "limitations",
+        ),
+        "research_gap": document.get(
+            "research_gap",
+        ),
+        "findings": document.get(
+            "findings",
+        ),
+        "future_work": document.get(
+            "future_work",
+        ),
+        "objective": document.get(
+            "objective",
+        ),
+        # Timestamps
+        "parsed_at": document.get(
+            "parsed_at",
+        ),
+        "indexed_at": document.get(
+            "indexed_at",
+        ),
+        "extracted_at": document.get(
+            "extracted_at",
+        ),
+        "updated_at": document.get(
+            "updated_at",
+        ),
     }
 
 
@@ -130,9 +204,17 @@ def get_all_papers():
 
 def get_paper_by_id(paper_id: str):
     object_id = _validate_object_id(paper_id)
-    paper = papers_collection.find_one({"_id": object_id})
+
+    paper = papers_collection.find_one(
+        {"_id": object_id}
+    )
+
     if not paper:
-        raise HTTPException(status_code=404, detail="Paper not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Paper not found",
+        )
+
     return _serialize_paper(paper)
 
 

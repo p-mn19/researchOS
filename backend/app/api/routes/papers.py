@@ -93,3 +93,18 @@ def change_paper_status(
     payload: PaperStatusUpdate,
 ):
     return update_paper_status(paper_id, payload.status)
+
+from app.services.review_service import generate_review
+
+
+@router.get("/{paper_id}/review")
+def get_paper_review(paper_id: str):
+    try:
+        return generate_review(paper_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Review generation failed: {str(exc)}",
+        ) from exc

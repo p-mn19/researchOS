@@ -48,7 +48,7 @@ export default function ComparePage() {
       setLoadingCompare(true);
       setError("");
       const data = await comparePapers(selected);
-      setRows(data);
+      setRows(data.rows);
     } catch (err) {
       console.error(err);
       setError("Comparison failed.");

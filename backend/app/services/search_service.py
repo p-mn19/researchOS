@@ -35,101 +35,15 @@ STOP_WORDS = {
 }
 
 
-def clean_display_text(text: str) -> str:
-    if not text:
-        return ""
-
-    text = re.sub(
-        r"([A-Za-z])-\s*\n\s*([A-Za-z])",
-        r"\1\2",
-        text,
-    )
-
-    text = re.sub(
-        r"https?://\S+",
-        " ",
-        text,
-    )
-
-    text = re.sub(
-        r"doi:\s*\S+",
-        " ",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    text = re.sub(
-        r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b",
-        " ",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    text = re.sub(
-        r"\b978[-\d]+(?:/\$\d+(?:\.\d+)?)?\b",
-        " ",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    text = re.sub(
-        r"\$\d+(?:\.\d+)?",
-        " ",
-        text,
-    )
-
-    text = re.sub(
-        r"©\s*\d{4}[^.\n]*",
-        " ",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    text = re.sub(
-        r"\[\s*\d+(?:\s*[,;-]\s*\d+)*\s*\]",
-        " ",
-        text,
-    )
-
-    text = re.sub(
-        r"(?:\b\d{1,3}\b[\s]*){8,}",
-        " ",
-        text,
-    )
-
-    text = re.sub(r"\s+", " ", text)
-
-    return text.strip()
-
-
-def _tokens(value: str) -> Set[str]:
-    words = re.findall(
-        r"[a-zA-Z0-9]+",
-        value.lower(),
-    )
-
-    return {
-        word
-        for word in words
-        if word not in STOP_WORDS and len(word) > 1
-    }
-
-
 def _stringify(value: Any) -> str:
     if value is None:
         return ""
 
     if isinstance(value, list):
-        return " ".join(
-            _stringify(item)
-            for item in value
-        )
+        return " ".join(_stringify(item) for item in value)
 
     if isinstance(value, dict):
-        return " ".join(
-            _stringify(item)
-            for item in value.values()
-        )
+        return " ".join(_stringify(item) for item in value.values())
 
     return str(value)
 
@@ -148,9 +62,89 @@ def _to_int(value: Any) -> Optional[int]:
             return None
 
         return int(value)
-
     except (TypeError, ValueError):
         return None
+
+
+def clean_display_text(text: str) -> str:
+    if not text:
+        return ""
+
+    # Join words broken across PDF line breaks.
+    text = re.sub(
+        r"([A-Za-z])-\s*\n\s*([A-Za-z])",
+        r"\1\2",
+        text,
+    )
+
+    # Remove URLs and DOI strings.
+    text = re.sub(r"https?://\S+", " ", text)
+    text = re.sub(
+        r"doi:\s*\S+",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Remove common publisher/license fragments.
+    text = re.sub(
+        r"\b978[-\d]+(?:/\$\d+(?:\.\d+)?)?\b",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\$\d+(?:\.\d+)?", " ", text)
+    text = re.sub(
+        r"©\s*\d{4}[^.\n]*",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Remove numeric citation markers such as [1] or [2, 5].
+    text = re.sub(
+        r"\[\s*\d+(?:\s*[,;-]\s*\d+)*\s*\]",
+        " ",
+        text,
+    )
+
+    # Remove PDF control characters and black rectangle artifacts.
+    text = re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", text)
+    text = re.sub(r"[■□▪▫▬▲▼◆◇▶◀●○�]+", " ", text)
+
+    # Remove unsupported replacement glyphs while preserving normal text.
+    text = re.sub(
+        r"[^\x20-\x7E\u00A0-\u024F\u1E00-\u1EFF\n\r\t]",
+        " ",
+        text,
+    )
+
+    text = text.encode("utf-8", "ignore").decode(
+        "utf-8",
+        "ignore",
+    )
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
+
+
+def _tokens(value: str) -> Set[str]:
+    words = re.findall(
+        r"[a-zA-Z0-9]+",
+        value.lower(),
+    )
+
+    return {
+        word
+        for word in words
+        if word not in STOP_WORDS and len(word) > 1
+    }
 
 
 def _score(query: str, text: str) -> float:
@@ -161,19 +155,10 @@ def _score(query: str, text: str) -> float:
         return 0.0
 
     matched_tokens = query_tokens.intersection(text_tokens)
-
-    if not matched_tokens:
-        return 0.0
-
     score = len(matched_tokens) / len(query_tokens)
 
-    normalized_query = " ".join(
-        query.lower().split()
-    )
-
-    normalized_text = " ".join(
-        text.lower().split()
-    )
+    normalized_query = " ".join(query.lower().split())
+    normalized_text = " ".join(text.lower().split())
 
     if normalized_query in normalized_text:
         score += 0.25
@@ -184,7 +169,7 @@ def _score(query: str, text: str) -> float:
 def _create_snippet(
     text: str,
     query: str,
-    max_length: int = 420,
+    max_length: int = 520,
 ) -> str:
     text = clean_display_text(text)
 
@@ -194,24 +179,17 @@ def _create_snippet(
     if len(text) <= max_length:
         return text
 
-    query_tokens = list(_tokens(query))
-    lower_text = text.lower()
-
+    normalized_text = text.lower()
     positions = []
 
-    for token in query_tokens:
-        position = lower_text.find(token.lower())
+    for token in _tokens(query):
+        position = normalized_text.find(token.lower())
 
         if position >= 0:
             positions.append(position)
 
-    if not positions:
-        return f"{text[:max_length].rstrip()}..."
-
-    match_position = min(positions)
-
-    context_before = 120
-    start = max(0, match_position - context_before)
+    match_position = min(positions) if positions else 0
+    start = max(0, match_position - 130)
     end = min(len(text), start + max_length)
 
     snippet = text[start:end].strip()
@@ -225,21 +203,34 @@ def _create_snippet(
     return snippet
 
 
+def _paper_lookup() -> Dict[str, Dict[str, Any]]:
+    lookup: Dict[str, Dict[str, Any]] = {}
+
+    for paper in papers_collection.find():
+        paper_id = str(paper["_id"])
+        lookup[paper_id] = paper
+
+        if paper.get("id") is not None:
+            lookup[str(paper["id"])] = paper
+
+    return lookup
+
+
 def _normalise_paper_ids(
     paper_ids: Optional[List[str]],
 ) -> Optional[List[str]]:
     if not paper_ids:
         return None
 
-    normalized = []
+    values = []
 
     for paper_id in paper_ids:
         value = str(paper_id or "").strip()
 
         if value:
-            normalized.append(value)
+            values.append(value)
 
-    return normalized or None
+    return values or None
 
 
 def _paper_filter(
@@ -262,31 +253,13 @@ def _paper_filter(
     return {"$in": values}
 
 
-def _paper_lookup() -> Dict[str, Dict[str, Any]]:
-    lookup: Dict[str, Dict[str, Any]] = {}
-
-    for paper in papers_collection.find():
-        paper_id = str(paper["_id"])
-        lookup[paper_id] = paper
-
-        if paper.get("id") is not None:
-            lookup[str(paper["id"])] = paper
-
-    return lookup
-
-
-def _get_chunk_paper_id(
-    chunk: Dict[str, Any],
-) -> str:
-    raw_paper_id = _first_value(
+def _chunk_paper_id(chunk: Dict[str, Any]) -> str:
+    value = _first_value(
         chunk.get("paper_id"),
         chunk.get("paperId"),
     )
 
-    if raw_paper_id is None:
-        return ""
-
-    return str(raw_paper_id)
+    return str(value) if value is not None else ""
 
 
 def _search_chunks(
@@ -295,16 +268,12 @@ def _search_chunks(
     top_k: int,
 ) -> List[Dict[str, Any]]:
     mongo_query: Dict[str, Any] = {}
-
     paper_filter = _paper_filter(paper_ids)
 
     if paper_filter:
         mongo_query["paper_id"] = paper_filter
 
-    chunks = list(
-        chunks_collection.find(mongo_query)
-    )
-
+    chunks = list(chunks_collection.find(mongo_query))
     papers = _paper_lookup()
     results: List[Dict[str, Any]] = []
 
@@ -315,17 +284,17 @@ def _search_chunks(
             chunk.get("content"),
         )
 
-        text = _stringify(raw_text)
+        original_text = _stringify(raw_text)
 
-        if not text.strip():
+        if not original_text.strip():
             continue
 
-        score = _score(query, text)
+        score = _score(query, original_text)
 
         if score <= 0:
             continue
 
-        paper_id = _get_chunk_paper_id(chunk)
+        paper_id = _chunk_paper_id(chunk)
         paper = papers.get(paper_id, {})
 
         page = _to_int(
@@ -333,7 +302,6 @@ def _search_chunks(
                 chunk.get("page"),
                 chunk.get("page_number"),
                 chunk.get("page_no"),
-                chunk.get("pageno"),
                 chunk.get("pageNum"),
             )
         )
@@ -344,84 +312,79 @@ def _search_chunks(
             chunk.get("section_name"),
         )
 
-        raw_chunk_id = chunk.get("_id")
-
-        result_id = (
-            str(raw_chunk_id)
-            if raw_chunk_id is not None
-            else f"chunk-{index}"
-        )
+        chunk_id = chunk.get("_id")
 
         results.append(
             {
-                "id": result_id,
+                "id": paper_id,
                 "paper_id": paper_id,
                 "paper_title": (
                     paper.get("title")
                     or paper.get("filename")
                     or "Untitled paper"
                 ),
-                "filename": paper.get("filename"),
-                "section_title": section_title,
-                "page": page,
-                "text": _create_snippet(text, query),
+                "filename": paper.get(
+                    "filename"
+                ),
+                "section_title": None,
+                "page": None,
+                "text": _create_snippet(
+                    full_text,
+                    query,
+                    max_length=1800,
+                ),
                 "score": round(score, 4),
+                "metadata": {
+                    "research_gap": paper.get("research_gap"),
+                    "limitations": paper.get("limitations"),
+                    "methodology": paper.get("methodology"),
+                    "findings": paper.get("findings"),
+                    "future_work": paper.get("future_work"),
+                    "keywords": paper.get("keywords", []),
+                },
             }
         )
 
     results.sort(
-        key=lambda result: result["score"],
+        key=lambda item: item["score"],
         reverse=True,
     )
 
     return results[:top_k]
 
 
-def _search_papers(
+def _search_selected_paper_text(
     query: str,
-    paper_ids: Optional[List[str]],
+    paper_ids: List[str],
     top_k: int,
 ) -> List[Dict[str, Any]]:
-    mongo_query: Dict[str, Any] = {}
-
     paper_filter = _paper_filter(paper_ids)
 
-    if paper_filter:
-        mongo_query["_id"] = paper_filter
+    if not paper_filter:
+        return []
 
-    papers = list(
-        papers_collection.find(mongo_query)
+    papers = papers_collection.find(
+        {"_id": paper_filter}
     )
 
-    results: List[Dict[str, Any]] = []
-
-    searchable_fields = [
-        "title",
-        "abstract",
-        "raw_text",
-        "methodology",
-        "dataset",
-        "limitations",
-        "future_work",
-    ]
+    results = []
 
     for paper in papers:
-        parts = []
-
-        for field in searchable_fields:
-            value = paper.get(field)
-
-            if value:
-                parts.append(_stringify(value))
-
         full_text = clean_display_text(
-            " ".join(parts)
+            _stringify(
+                paper.get("raw_text")
+                or paper.get("text")
+                or ""
+            )
         )
 
-        score = _score(query, full_text)
-
-        if score <= 0:
+        if not full_text:
             continue
+
+        score = _score(
+            query,
+            full_text,
+        )
 
         paper_id = str(paper["_id"])
 
@@ -434,19 +397,22 @@ def _search_papers(
                     or paper.get("filename")
                     or "Untitled paper"
                 ),
-                "filename": paper.get("filename"),
+                "filename": paper.get(
+                    "filename"
+                ),
                 "section_title": None,
                 "page": None,
                 "text": _create_snippet(
                     full_text,
                     query,
+                    max_length=1800,
                 ),
                 "score": round(score, 4),
             }
         )
 
     results.sort(
-        key=lambda result: result["score"],
+        key=lambda item: item["score"],
         reverse=True,
     )
 
@@ -477,8 +443,97 @@ def semantic_search(
     if chunk_results:
         return chunk_results
 
+    if paper_ids:
+        selected_results = (
+            _search_selected_paper_text(
+                query=query,
+                paper_ids=paper_ids,
+                top_k=top_k,
+            )
+        )
+
+        if selected_results:
+            return selected_results
+
+        # If the selected paper has chunks but
+        # keyword matching failed, return only
+        # that paper's chunks.
+        paper_filter = _paper_filter(
+            paper_ids
+        )
+
+        mongo_query = {}
+
+        if paper_filter:
+            mongo_query["paper_id"] = (
+                paper_filter
+            )
+
+        fallback_chunks = list(
+            chunks_collection.find(
+                mongo_query
+            ).limit(top_k)
+        )
+
+        papers = _paper_lookup()
+        results = []
+
+        for index, chunk in enumerate(
+            fallback_chunks
+        ):
+            paper_id = _chunk_paper_id(chunk)
+            paper = papers.get(
+                paper_id,
+                {},
+            )
+
+            text = _stringify(
+                _first_value(
+                    chunk.get("text"),
+                    chunk.get("chunk_text"),
+                    chunk.get("content"),
+                )
+            )
+
+            if not text.strip():
+                continue
+
+            results.append(
+                {
+                    "id": str(
+                        chunk.get("_id")
+                    ),
+                    "paper_id": paper_id,
+                    "paper_title": (
+                        paper.get("title")
+                        or paper.get("filename")
+                        or "Untitled paper"
+                    ),
+                    "filename": paper.get(
+                        "filename"
+                    ),
+                    "section_title": chunk.get(
+                        "section_title"
+                    ),
+                    "page": _to_int(
+                        _first_value(
+                            chunk.get("page"),
+                            chunk.get("page_number"),
+                        )
+                    ),
+                    "text": _create_snippet(
+                        text,
+                        query,
+                        max_length=1800,
+                    ),
+                    "score": 0.01,
+                }
+            )
+
+        return results[:top_k]
+
     return _search_papers(
         query=query,
-        paper_ids=paper_ids,
+        paper_ids=None,
         top_k=top_k,
     )

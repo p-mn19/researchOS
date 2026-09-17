@@ -1,21 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes.compare import router as compare_router
-from app.api.routes.papers import router as papers_router
-from app.api.routes.review import router as review_router
-from app.api.routes.search import router as search_router
+from app.config import settings
+from app.api.routes import compare, review
+from app.routers import answers, papers, search
 
 
 app = FastAPI(
-    title="ResearchOS Backend",
+    title=settings.APP_NAME,
     version="1.0.0",
-    description="Backend API for the ResearchOS academic research assistant.",
 )
 
 
-# Allow requests from the Next.js development server.
-# Keep credentials enabled only with explicit origins, not '*'.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -28,23 +24,22 @@ app.add_middleware(
 )
 
 
-# Register all application routers.
-app.include_router(papers_router)
-app.include_router(search_router)
-app.include_router(compare_router)
-app.include_router(review_router)
+app.include_router(papers.router)
+app.include_router(search.router)
+app.include_router(answers.router)
+app.include_router(compare.router)
+app.include_router(review.router)
 
 
-@app.get("/", tags=["system"])
+@app.get("/")
 def root():
     return {
         "message": "ResearchOS backend running",
         "status": "ok",
-        "version": "1.0.0",
     }
 
 
-@app.get("/health", tags=["system"])
+@app.get("/health")
 def health():
     return {
         "ok": True,

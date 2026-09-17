@@ -1,7 +1,9 @@
 from typing import Any, Dict, Optional
 
+
 from bson import ObjectId
 from fastapi import HTTPException
+
 
 from app.db import papers_collection, extractions_collection
 
@@ -26,7 +28,6 @@ def _find_paper(paper_id: str) -> Optional[dict]:
     if not paper_id:
         return None
 
-    # Normal MongoDB ObjectId
     if ObjectId.is_valid(paper_id):
         paper = papers_collection.find_one(
             {"_id": ObjectId(paper_id)}
@@ -35,7 +36,6 @@ def _find_paper(paper_id: str) -> Optional[dict]:
         if paper:
             return paper
 
-    # Numeric MongoDB _id, for example _id: 1
     if paper_id.isdigit():
         numeric_id = int(paper_id)
 
@@ -46,7 +46,6 @@ def _find_paper(paper_id: str) -> Optional[dict]:
         if paper:
             return paper
 
-        # Legacy documents may store the ID in a normal `id` field
         paper = papers_collection.find_one(
             {"id": paper_id}
         )
@@ -121,6 +120,16 @@ def generate_review(paper_id: str) -> Dict[str, Any]:
     future_work = _text(
         extraction.get("future_work")
         or paper.get("future_work")
+    )
+
+    research_gap = _text(
+        extraction.get("research_gap")
+        or paper.get("research_gap")
+    )
+
+    findings = _text(
+        extraction.get("findings")
+        or paper.get("findings")
     )
 
     clarity_score = 8 if abstract else 5
@@ -252,4 +261,10 @@ def generate_review(paper_id: str) -> Dict[str, Any]:
         ),
         "summary": summary,
         "dimensions": dimensions,
+        # Extra fields useful for Module 8
+        "research_gap": research_gap,
+        "findings": findings,
+        "future_work": future_work,
+        "limitations": limitations,
+        "methodology": methodology,
     }

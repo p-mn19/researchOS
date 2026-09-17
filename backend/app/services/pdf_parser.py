@@ -1,149 +1,101 @@
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-import fitz
+import pymupdf
 from bson import ObjectId
 from fastapi import HTTPException
 
 from app.db import papers_collection
 
 
-def _get_object_id(paper_id: str) -> ObjectId:
-    paper_id = str(paper_id or "").strip()
-
-    if not ObjectId.is_valid(paper_id):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid paper ID: {paper_id!r}",
-        )
-
-    return ObjectId(paper_id)
+YEAR_PATTERN = re.compile(
+    r"\b(?:19|20)\d{2}\b"
+)
 
 
 def clean_pdf_text(text: str) -> str:
     if not text:
         return ""
 
-    # Join words broken across PDF line breaks:
-    # "meth-\nodology" -> "methodology"
-    text = re.sub(r"([A-Za-z])-\s*\n\s*([A-Za-z])", r"\1\2", text)
-
-    # Remove URLs and DOI links.
-    text = re.sub(r"https?://\S+", " ", text)
-    text = re.sub(r"doi:\s*\S+", " ", text, flags=re.IGNORECASE)
-
-    # Remove common DOI and IEEE license fragments.
     text = re.sub(
-        r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b",
+        r"([A-Za-z])-\s*\n\s*([A-Za-z])",
+        r"\1\2",
+        text,
+    )
+
+    text = re.sub(
+        r"https?://\S+",
+        " ",
+        text,
+    )
+
+    text = re.sub(
+        r"doi:\s*\S+",
         " ",
         text,
         flags=re.IGNORECASE,
     )
 
     text = re.sub(
-        r"\b978[-\d]+(?:/\$\d+(?:\.\d+)?)?\b",
+        r"[■□▪▫▬▲▼◆◇▶◀●○�]+",
         " ",
         text,
-        flags=re.IGNORECASE,
+    )
+
+    # Preserve newline characters because the
+    # extraction service uses them to identify
+    # section headings.
+    text = re.sub(
+        r"[^\S\r\n]+",
+        " ",
+        text,
     )
 
     text = re.sub(
-        r"\$\d+(?:\.\d+)?",
+        r"[ \t]+",
         " ",
         text,
     )
 
     text = re.sub(
-        r"©\s*\d{4}[^.\n]*",
-        " ",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    # Remove bracket-only numeric citations such as [1], [12], [3, 5].
-    text = re.sub(
-        r"\[\s*\d+(?:\s*[,;-]\s*\d+)*\s*\]",
-        " ",
+        r"\n{3,}",
+        "\n\n",
         text,
     )
-
-    # Remove long isolated page-number sequences.
-    text = re.sub(
-        r"(?:\b\d{1,3}\b[\s]*){8,}",
-        " ",
-        text,
-    )
-
-    # Replace repeated whitespace and line breaks.
-    text = re.sub(r"\s+", " ", text)
 
     return text.strip()
 
 
-def _extract_year(text: str) -> Optional[int]:
-    first_part = text[:6000]
-
-    matches = re.findall(
-        r"\b(19\d{2}|20\d{2})\b",
-        first_part,
+def _find_year(
+    text: str,
+    filename: str,
+):
+    match = YEAR_PATTERN.search(
+        text[:10000]
     )
 
-    current_year = datetime.utcnow().year
+    if match:
+        return int(match.group(0))
 
-    for value in matches:
-        year = int(value)
+    match = YEAR_PATTERN.search(filename)
 
-        if 1900 <= year <= current_year + 1:
-            return year
+    if match:
+        return int(match.group(0))
 
     return None
 
 
-def _clean_line(line: str) -> str:
-    return re.sub(r"\s+", " ", line).strip()
-
-
-def _extract_title_from_text(
-    text: str,
-    fallback_title: str,
-) -> str:
-    lines = [
-        _clean_line(line)
-        for line in text[:5000].splitlines()
-        if _clean_line(line)
-    ]
-
-    ignored_lines = {
-        "abstract",
-        "introduction",
-        "keywords",
-        "contents",
-    }
-
-    for line in lines[:30]:
-        lower_line = line.lower()
-
-        if lower_line in ignored_lines:
-            continue
-
-        if len(line) < 12:
-            continue
-
-        if re.fullmatch(r"\d{4}", line):
-            continue
-
-        if "@" in line:
-            continue
-
-        return line[:500]
-
-    return fallback_title
-
-
 def parse_pdf_text(paper_id: str):
-    object_id = _get_object_id(paper_id)
+    paper_id = str(paper_id or "").strip()
+
+    if not ObjectId.is_valid(paper_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid paper ID",
+        )
+
+    object_id = ObjectId(paper_id)
 
     paper = papers_collection.find_one(
         {"_id": object_id}
@@ -157,80 +109,128 @@ def parse_pdf_text(paper_id: str):
 
     filepath = paper.get("filepath")
 
-    if not filepath or not Path(filepath).exists():
+    if not filepath:
         raise HTTPException(
-            status_code=404,
-            detail="PDF file not found on disk",
+            status_code=400,
+            detail="Paper file path is missing",
         )
 
-    try:
-        document = fitz.open(filepath)
-    except Exception as exc:
+    pdf_path = Path(filepath)
+
+    if not pdf_path.exists():
         raise HTTPException(
-            status_code=500,
-            detail=f"Could not open PDF: {str(exc)}",
-        ) from exc
+            status_code=404,
+            detail=(
+                "PDF file does not exist: "
+                f"{filepath}"
+            ),
+        )
 
     pages = []
-    raw_pages = []
+    page_texts = []
 
     try:
-        for index, page in enumerate(document):
-            raw_text = page.get_text("text") or ""
-            cleaned_text = clean_pdf_text(raw_text)
+        document = pymupdf.open(str(pdf_path))
 
-            pages.append(
-                {
-                    "page_number": index + 1,
-                    "text": cleaned_text,
+        try:
+            for page_number, page in enumerate(
+                document,
+                start=1,
+            ):
+                raw_text = page.get_text(
+                    "text"
+                ) or ""
+
+                cleaned_text = clean_pdf_text(
+                    raw_text
+                )
+
+                pages.append(
+                    {
+                        "page_number": page_number,
+                        "text": cleaned_text,
+                    }
+                )
+
+                if cleaned_text:
+                    page_texts.append(
+                        cleaned_text
+                    )
+
+        finally:
+            document.close()
+
+    except Exception as exc:
+        papers_collection.update_one(
+            {"_id": object_id},
+            {
+                "$set": {
+                    "status": "uploaded",
+                    "parse_error": str(exc),
+                    "updated_at": datetime.utcnow(),
                 }
-            )
+            },
+        )
 
-            raw_pages.append(cleaned_text)
-
-    finally:
-        document.close()
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "PDF parsing failed: "
+                f"{str(exc)}"
+            ),
+        ) from exc
 
     combined_text = clean_pdf_text(
-        "\n".join(raw_pages)
+        "\n\n".join(page_texts)
     )
 
-    fallback_title = (
-        paper.get("title")
-        or Path(
-            paper.get("filename", "paper.pdf")
-        ).stem.replace("_", " ")
-    )
+    if not combined_text:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No readable text was found "
+                "in the PDF. The PDF may be "
+                "scanned or image-only."
+            ),
+        )
 
-    extracted_title = _extract_title_from_text(
+    title = paper.get("title") or ""
+
+    if title.lower() == "untitled paper":
+        title = ""
+
+    if not title:
+        title = pdf_path.stem.replace(
+            "_",
+            " ",
+        )
+
+    year = _find_year(
         combined_text,
-        fallback_title,
+        paper.get("filename", ""),
     )
-
-    extracted_year = _extract_year(combined_text)
-
-    update_data = {
-        "raw_text": combined_text,
-        "pages": pages,
-        "title": extracted_title,
-        "status": "parsed",
-        "parsed_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
-    }
-
-    if extracted_year is not None:
-        update_data["year"] = extracted_year
 
     papers_collection.update_one(
         {"_id": object_id},
-        {"$set": update_data},
+        {
+            "$set": {
+                "raw_text": combined_text,
+                "text": combined_text,
+                "pages": pages,
+                "title": title,
+                "year": year,
+                "status": "parsed",
+                "parsed_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "parse_error": None,
+            }
+        },
     )
 
     return {
         "paper_id": paper_id,
-        "title": extracted_title,
-        "year": extracted_year,
+        "status": "parsed",
         "pages_count": len(pages),
         "characters": len(combined_text),
-        "status": "parsed",
+        "year": year,
     }

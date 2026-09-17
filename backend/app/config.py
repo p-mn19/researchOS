@@ -1,22 +1,67 @@
 from pathlib import Path
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    SettingsConfigDict,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+DEFAULT_STORAGE_DIR = BASE_DIR / "uploads"
+DEFAULT_VECTOR_DIR = BASE_DIR / "vector_store"
+
+DEFAULT_STORAGE_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+DEFAULT_VECTOR_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
 
 class Settings(BaseSettings):
-    mongodb_url: str = "mongodb://localhost:27017"
-    database_name: str = "researchos_db"
-    storage_dir: str = "storage/papers"
+    APP_NAME: str = "ResearchOS Backend"
+    APP_ENV: str = "development"
+
+    FRONTEND_URL: str = (
+        "http://localhost:3000"
+    )
+
+    MONGODB_URL: str = (
+        "mongodb://127.0.0.1:27017"
+    )
+
+    MONGODB_DB: str = "researchos"
+
+    STORAGE_DIR: str = str(DEFAULT_STORAGE_DIR)
+    VECTOR_DIR: str = str(DEFAULT_VECTOR_DIR)
+
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = (
+        "openai/gpt-oss-20b"
+    )
 
     model_config = SettingsConfigDict(
-        env_file=BASE_DIR / ".env",
+        env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False,
         extra="ignore",
     )
 
 
 settings = Settings()
+
+STORAGE_DIR = Path(settings.STORAGE_DIR)
+VECTOR_DIR = Path(settings.VECTOR_DIR)
+
+STORAGE_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+VECTOR_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)

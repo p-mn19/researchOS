@@ -1,4 +1,5 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +19,7 @@ class SearchHit(BaseModel):
     page: Optional[int] = None
     text: str
     score: float
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class SearchResponse(BaseModel):

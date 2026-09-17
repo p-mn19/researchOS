@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useState, type KeyboardEvent } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -14,18 +21,32 @@ import {
 
 import { AppShell } from "@/components/layout/app_shell";
 import {
+  askPaper,
   extractPaper,
   getExtraction,
   getPaper,
   parsePaper,
   searchPaper,
 } from "@/lib/api";
-import { ChunkResult, Extraction, Paper } from "@/lib/types";
+import type {
+  ChunkResult,
+  Extraction,
+  Paper,
+} from "@/lib/types";
+import type { ExtractionResponse } from "@/lib/api";
 
+type AnswerSource = {
+  source_number?: number;
+  paper_title?: string;
+  page?: number;
+  section_title?: string;
+  score?: number;
+};
 
-type ExtractionResponse = Extraction | { extraction?: Extraction } | null;
-
-function getErrorMessage(error: unknown, fallback: string): string {
+function getErrorMessage(
+  error: unknown,
+  fallback: string,
+): string {
   if (error instanceof Error && error.message) {
     return error.message;
   }
@@ -34,17 +55,21 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 function normalizeExtraction(
-  data: ExtractionResponse,
+  data: ExtractionResponse | null,
 ): Extraction | null {
   if (!data) {
     return null;
   }
 
-  if ("extraction" in data && data.extraction) {
-    return data.extraction;
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "extraction" in data
+  ) {
+    return data.extraction || null;
   }
 
-  return (data as Extraction) || null;
+  return data as Extraction;
 }
 
 export default function PaperDetailPage() {
@@ -55,117 +80,178 @@ export default function PaperDetailPage() {
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [results, setResults] = useState<ChunkResult[]>([]);
   const [query, setQuery] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [answerSources, setAnswerSources] = useState<AnswerSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [answering, setAnswering] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [extracting, setExtracting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [errorText, setErrorText] = useState("");
 
-  async function loadPaper() {
-    if (!id) return;
+  const loadPaper = useCallback(async () => {
+    if (!id) {
+      return;
+    }
 
     try {
       setLoading(true);
-      setErrorMessage("");
+      setErrorText("");
 
       const [paperData, extractionData] = await Promise.all([
         getPaper(id),
         getExtraction(id).catch(() => null),
       ]);
 
-      setPaper(paperData as Paper);
-      setExtraction(
-        normalizeExtraction(extractionData as ExtractionResponse),
-      );
+      setPaper(paperData);
+      setExtraction(normalizeExtraction(extractionData));
     } catch (error) {
       console.error("Failed to load paper:", error);
-      setErrorMessage(
+      setErrorText(
         getErrorMessage(error, "Failed to load the paper."),
       );
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
 
   useEffect(() => {
     void loadPaper();
-  }, [id]);
+  }, [loadPaper]);
 
   async function handleParse() {
-    if (!id || parsing || extracting) return;
+    if (!id || parsing || extracting) {
+      return;
+    }
 
     try {
       setParsing(true);
-      setErrorMessage("");
+      setErrorText("");
       await parsePaper(id);
       await loadPaper();
     } catch (error) {
       console.error("Parsing failed:", error);
-      setErrorMessage(getErrorMessage(error, "Parsing failed."));
+      setErrorText(
+        getErrorMessage(error, "Parsing failed."),
+      );
     } finally {
       setParsing(false);
     }
   }
 
   async function handleExtract() {
-    if (!id || extracting || parsing) return;
+    if (!id || extracting || parsing) {
+      return;
+    }
 
     try {
       setExtracting(true);
-      setErrorMessage("");
+      setErrorText("");
 
-      // Parse first so the backend has the latest cleaned text.
-      await parsePaper(id);
+      const response = await extractPaper(id);
+      const nextExtraction = normalizeExtraction(response);
 
-      // Extract only after parsing succeeds.
-      const extractionResponse = await extractPaper(id);
-      const normalized = normalizeExtraction(
-        extractionResponse as ExtractionResponse,
-      );
-
-      setExtraction(normalized);
+      setExtraction(nextExtraction);
       await loadPaper();
     } catch (error) {
       console.error("Extraction failed:", error);
-      setErrorMessage(getErrorMessage(error, "Extraction failed."));
+      setErrorText(
+        getErrorMessage(error, "Extraction failed."),
+      );
     } finally {
       setExtracting(false);
     }
   }
 
   async function handleSearch() {
-    const trimmedQuery = query.trim();
+    const value = query.trim();
 
-    if (!id || !trimmedQuery || searching) return;
+    if (!id || !value || searching) {
+      return;
+    }
 
     try {
       setSearching(true);
-      setErrorMessage("");
+      setErrorText("");
+      setAnswer("");
+      setAnswerSources([]);
 
-      const data = await searchPaper(id, trimmedQuery);
-      setResults(data as ChunkResult[]);
+      const data = await searchPaper(id, value);
+      setResults(data);
     } catch (error) {
       console.error("Search failed:", error);
-      setErrorMessage(getErrorMessage(error, "Search failed."));
+      setErrorText(
+        getErrorMessage(error, "Search failed."),
+      );
     } finally {
       setSearching(false);
     }
   }
 
-  function handleSearchKeyDown(
+  async function handleAskAI() {
+    const value = query.trim();
+
+    if (!id || !value || answering) {
+      return;
+    }
+
+    try {
+      setAnswering(true);
+      setErrorText("");
+
+      const response = await askPaper(id, value, 5);
+
+      setAnswer(
+        response.answer || "No answer was generated.",
+      );
+      setAnswerSources(response.sources || []);
+    } catch (error) {
+      console.error("AI answer failed:", error);
+      setErrorText(
+        getErrorMessage(
+          error,
+          "AI answer generation failed.",
+        ),
+      );
+    } finally {
+      setAnswering(false);
+    }
+  }
+
+  function handleQueryKeyDown(
     event: KeyboardEvent<HTMLInputElement>,
   ) {
     if (event.key === "Enter") {
-      void handleSearch();
+      void handleAskAI();
     }
   }
 
   const extractedCards = [
-    { label: "Objective", value: extraction?.objective, icon: FlaskConical },
-    { label: "Methodology", value: extraction?.methodology, icon: Database },
-    { label: "Dataset", value: extraction?.dataset, icon: FileText },
-    { label: "Metric", value: extraction?.evaluation_metric, icon: Sparkles },
-    { label: "Limitations", value: extraction?.limitations, icon: Search },
+    {
+      label: "Objective",
+      value: extraction?.objective,
+      icon: FlaskConical,
+    },
+    {
+      label: "Methodology",
+      value: extraction?.methodology,
+      icon: Database,
+    },
+    {
+      label: "Dataset",
+      value: extraction?.dataset,
+      icon: FileText,
+    },
+    {
+      label: "Metric",
+      value: extraction?.evaluation_metric,
+      icon: Sparkles,
+    },
+    {
+      label: "Limitations",
+      value: extraction?.limitations,
+      icon: Search,
+    },
     {
       label: "Future work",
       value: extraction?.future_work,
@@ -186,12 +272,12 @@ export default function PaperDetailPage() {
           </Link>
         </div>
 
-        {errorMessage && (
+        {errorText && (
           <div
             role="alert"
             className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
           >
-            {errorMessage}
+            {errorText}
           </div>
         )}
 
@@ -212,11 +298,11 @@ export default function PaperDetailPage() {
                     Paper detail
                   </div>
 
-                  <h1 className="wrap-break-word text-3xl font-semibold tracking-tight text-slate-900">
+                  <h1 className="break-words text-3xl font-semibold tracking-tight text-slate-900">
                     {paper.title || "Untitled paper"}
                   </h1>
 
-                  <p className="mt-3 wrap-break-word text-sm leading-6 text-slate-600">
+                  <p className="mt-3 break-words text-sm leading-6 text-slate-600">
                     {paper.filename}
                   </p>
 
@@ -225,7 +311,7 @@ export default function PaperDetailPage() {
                       <h2 className="text-sm font-semibold text-slate-900">
                         Abstract
                       </h2>
-                      <p className="mt-2 whitespace-pre-wrap wrap-break-word text-sm leading-7 text-slate-600">
+                      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
                         {paper.abstract}
                       </p>
                     </div>
@@ -266,7 +352,9 @@ export default function PaperDetailPage() {
                     disabled={extracting || parsing}
                     className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
-                    {extracting ? "Parsing and extracting..." : "Run extraction"}
+                    {extracting
+                      ? "Extracting..."
+                      : "Run extraction"}
                   </button>
                 </div>
               </div>
@@ -285,6 +373,10 @@ export default function PaperDetailPage() {
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {extractedCards.map((item) => {
                   const Icon = item.icon;
+                  const value =
+                    typeof item.value === "string"
+                      ? item.value.trim()
+                      : "";
 
                   return (
                     <div
@@ -300,8 +392,8 @@ export default function PaperDetailPage() {
                         </h3>
                       </div>
 
-                      <p className="whitespace-pre-wrap wrap-break-word text-sm leading-6 text-slate-600">
-                        {item.value || "Not extracted yet."}
+                      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
+                        {value || "Field does not exist."}
                       </p>
                     </div>
                   );
@@ -312,10 +404,10 @@ export default function PaperDetailPage() {
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5">
                 <h2 className="text-xl font-semibold text-slate-900">
-                  Semantic search
+                  Ask the paper
                 </h2>
                 <p className="text-sm text-slate-500">
-                  Search relevant chunks from this paper
+                  Ask a detailed question and receive an AI-generated answer grounded in the paper.
                 </p>
               </div>
 
@@ -323,10 +415,19 @@ export default function PaperDetailPage() {
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                  placeholder="e.g. What dataset is used in this paper?"
+                  onKeyDown={handleQueryKeyDown}
+                  placeholder="e.g. What dataset is used and why?"
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50"
                 />
+
+                <button
+                  type="button"
+                  onClick={() => void handleAskAI()}
+                  disabled={answering || !query.trim()}
+                  className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {answering ? "Thinking..." : "Ask AI"}
+                </button>
 
                 <button
                   type="button"
@@ -337,6 +438,45 @@ export default function PaperDetailPage() {
                   {searching ? "Searching..." : "Search"}
                 </button>
               </div>
+
+              {answer && (
+                <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-6">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-blue-600" />
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      AI research assistant
+                    </h3>
+                  </div>
+
+                  <div className="ai-answer mt-4 break-words text-sm leading-7 text-slate-700">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {answer}
+                    </ReactMarkdown>
+                  </div>
+
+                  {answerSources.length > 0 && (
+                    <div className="mt-5 border-t border-blue-100 pt-4">
+                      <h4 className="text-sm font-semibold text-slate-900">
+                        Retrieved sources
+                      </h4>
+
+                      <div className="mt-2 space-y-1 text-xs text-slate-600">
+                        {answerSources.map((source, index) => (
+                          <p
+                            key={`${source.paper_title || "paper"}-${source.page || "page"}-${index}`}
+                          >
+                            Source {source.source_number || index + 1}: {source.paper_title || "Paper"}
+                            {source.page ? `, page ${source.page}` : ""}
+                            {source.section_title
+                              ? `, ${source.section_title}`
+                              : ""}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mt-6 space-y-4">
                 {results.length === 0 ? (
@@ -365,7 +505,7 @@ export default function PaperDetailPage() {
                         )}
                       </div>
 
-                      <p className="whitespace-pre-wrap wrap-break-word text-sm leading-7 text-slate-700">
+                      <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
                         {chunk.text}
                       </p>
                     </div>

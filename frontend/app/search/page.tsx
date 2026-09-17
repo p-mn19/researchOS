@@ -4,68 +4,100 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/app_shell";
 import { Search, FileText, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { GlobalLiteratureSearch } from "@/components/search/global_literature_search";
 
-const PAPERS = [
+
+type LocalPaper = {
+  id: string;
+  title: string;
+  filename: string;
+  year: number;
+  tags: string[];
+};
+
+
+const PAPERS: LocalPaper[] = [
   {
     id: "1",
     title: "The Kepler end-to-end data pipeline from photons to planets",
-    filename: "The_Kepler_end-to-end_data_pipeline_from_photons_to_planets.pdf",
+    filename:
+      "The_Kepler_end-to-end_data_pipeline_from_photons_to_planets.pdf",
     year: 2024,
     tags: ["dataset", "pipeline", "astronomy", "photons", "planets"],
   },
   {
     id: "2",
     title: "AstroFusion: A GAN-Augmented Approach for Exoplanet Detection",
-    filename: "AstroFusion_A_GAN-Augmented_Approach_for_Exoplanet_Detection.pdf",
+    filename:
+      "AstroFusion_A_GAN-Augmented_Approach_for_Exoplanet_Detection.pdf",
     year: 2023,
     tags: ["architecture", "gan", "exoplanet", "detection", "augmentation"],
   },
   {
     id: "3",
     title: "A Study of Light Intensity of Stars for Exoplanet Detection",
-    filename: "A_Study_of_Light_Intensity_of_Stars_for_Exoplanet_Detection.pdf",
+    filename:
+      "A_Study_of_Light_Intensity_of_Stars_for_Exoplanet_Detection.pdf",
     year: 2026,
     tags: ["light intensity", "stars", "exoplanet", "analysis", "dataset"],
   },
   {
     id: "4",
     title: "Statistical and Machine Learning Perspectives on Exoplanet Detection",
-    filename: "Statistical_and_Machine_Learning_Perspectives_on_Exoplanet_Detection.pdf",
+    filename:
+      "Statistical_and_Machine_Learning_Perspectives_on_Exoplanet_Detection.pdf",
     year: 2026,
     tags: ["machine learning", "statistics", "review", "detection", "survey"],
   },
   {
     id: "5",
-    title: "AI-Driven Research Assistant for Automated Summarization of Generative AI Flaws",
-    filename: "AI-Driven-Research-Assistant-for-Automated-Summarization-of-Generative-AI-Flaws.pdf",
+    title:
+      "AI-Driven Research Assistant for Automated Summarization of Generative AI Flaws",
+    filename:
+      "AI-Driven-Research-Assistant-for-Automated-Summarization-of-Generative-AI-Flaws.pdf",
     year: 2026,
     tags: ["ai assistant", "summarization", "review", "limitations", "automation"],
   },
   {
     id: "6",
     title: "Transformative Automation in Scientific Literature Review",
-    filename: "Transformative_Automation_in_Scientific_Literature_Review.pdf",
+    filename:
+      "Transformative_Automation_in_Scientific_Literature_Review.pdf",
     year: 2026,
     tags: ["literature review", "automation", "research", "workflow", "review"],
   },
 ];
 
+
 export default function SearchPage() {
   const [query, setQuery] = useState("");
 
   const filteredPapers = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return PAPERS;
+    const value = query.trim().toLowerCase();
+
+    if (!value) {
+      return PAPERS;
+    }
 
     return PAPERS.filter((paper) => {
-      const haystack = `${paper.title} ${paper.filename} ${paper.year} ${paper.tags.join(" ")}`.toLowerCase();
-      return haystack.includes(q);
+      const haystack = [
+        paper.title,
+        paper.filename,
+        String(paper.year),
+        paper.tags.join(" "),
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(value);
     });
   }, [query]);
 
   return (
     <AppShell>
       <div className="space-y-6">
+        <GlobalLiteratureSearch />
+
         <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
           <div className="mb-6 flex items-start gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
@@ -85,7 +117,7 @@ export default function SearchPage() {
           <div className="flex flex-col gap-3 sm:flex-row">
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(event) => setQuery(event.target.value)}
               placeholder="Search papers by topic, dataset, method..."
               className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
             />
@@ -106,7 +138,8 @@ export default function SearchPage() {
               Available papers
             </h2>
             <p className="text-sm text-slate-500">
-              {filteredPapers.length} paper{filteredPapers.length === 1 ? "" : "s"} found
+              {filteredPapers.length} paper
+              {filteredPapers.length === 1 ? "" : "s"} found
             </p>
           </div>
 
@@ -135,7 +168,9 @@ export default function SearchPage() {
                   </p>
 
                   <div className="mt-4 flex items-center justify-between">
-                    <span className="text-xs text-slate-400">{paper.year}</span>
+                    <span className="text-xs text-slate-400">
+                      {paper.year}
+                    </span>
                     <span className="inline-flex items-center gap-1 text-sm font-medium text-blue-700">
                       Open
                       <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />

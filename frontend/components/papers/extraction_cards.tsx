@@ -16,7 +16,7 @@ export function ExtractionCards({ extraction }: { extraction: Extraction }) {
         <div key={field.key} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
           <h3 className="mb-2 text-sm font-semibold text-emerald-300">{field.label}</h3>
           <p className="text-sm leading-6 text-zinc-300">
-            {extraction[field.key] || "Not extracted yet."}
+            {extraction[field.key] || "Field does not exist."}
           </p>
         </div>
       ))}
