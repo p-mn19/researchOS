@@ -1,12 +1,34 @@
-from fastapi import APIRouter, HTTPException
-from app.models.schemas import SearchRequest
-from app.services.search_service import semantic_search
+from fastapi import APIRouter, HTTPException, Query
+from typing import List
 
-router = APIRouter(prefix="/search", tags=["search"])
+from app.models.schemas import PaperMetadata
+from app.services.discovery_service import LiteratureDiscoveryService
 
-@router.post("/query")
-def query_search(payload: SearchRequest):
+# Create the router instance
+router = APIRouter(
+    prefix="/search",
+    tags=["search"],
+)
+
+discovery_service = LiteratureDiscoveryService()
+
+
+@router.get("/discovery", response_model=List[PaperMetadata])
+async def search_global_literature(
+    query: str = Query(..., description="Research topic or keywords"),
+    limit: int = Query(5, ge=1, le=25, description="Results per academic API source")
+):
+    """
+    Queries OpenAlex and arXiv simultaneously, returning deduplicated academic papers.
+    """
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty.")
+    
     try:
-        return semantic_search(payload.query, payload.paper_ids, payload.top_k or 5)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        results = await discovery_service.search_all(query=query, limit_per_source=limit)
+        return results
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Discovery search failed: {str(exc)}",
+        ) from exc

@@ -3,6 +3,7 @@ import {
   CompareRow,
   Extraction,
   Paper,
+  PaperMetadata,
   ReviewReport,
   SearchResult,
 } from "./types";
@@ -71,6 +72,7 @@ export const getPaper = (id: string) =>
 
 export const getExtraction = (id: string) =>
   api(`/papers/${encodeURIComponent(id)}/extraction`) as Promise<Extraction>;
+
 export const searchPaper = async (
   id: string,
   query: string
@@ -127,6 +129,21 @@ export const semanticSearch = async (
       top_k: topK,
     }),
   });
+};
+
+export const searchDiscoveryPapers = async (
+  query: string,
+  limit = 5
+): Promise<PaperMetadata[]> => {
+  return api(
+    `/search/discovery?query=${encodeURIComponent(query)}&limit=${limit}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
 };
 
 export const generateReview = async (

@@ -73,3 +73,16 @@ export interface ReviewReport {
   summary: string;
   dimensions: ReviewDimension[];
 }
+
+export interface PaperMetadata {
+  source: "arXiv" | "OpenAlex" | string;
+  source_id: string;
+  title: string;
+  abstract: string;
+  authors: string[];
+  year?: number | null;
+  doi?: string | null;
+  pdf_url?: string | null;
+  citation_count?: number;
+  venue?: string | null;
+}

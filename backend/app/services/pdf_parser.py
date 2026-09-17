@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import fitz
+import pymupdf as fitz
 from bson import ObjectId
 from fastapi import HTTPException
 

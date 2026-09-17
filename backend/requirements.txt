@@ -1,0 +1,44 @@
+# --- Web & API Core ---
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+pydantic
+pydantic-settings
+requests
+httpx
+aiohttp
+aiofiles
+
+# --- Academic Discovery & Extraction ---
+arxiv
+PyMuPDF
+PyPDF2
+
+# --- Database & Storage ---
+pymongo
+chromadb
+
+# --- LangChain & LLM Pipeline ---
+langchain
+langchain-community
+langchain-core
+langchain-chroma
+langchain-openai
+openai
+tiktoken
+
+# --- Machine Learning, Embeddings & Vision ---
+torch
+transformers
+sentence-transformers
+numpy
+pandas
+scikit-learn
+scipy
+pillow
+
+# --- Utilities & Export ---
+jinja2
+rich
+tqdm

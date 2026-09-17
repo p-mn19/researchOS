@@ -3,7 +3,7 @@ from datetime import datetime
 from bson import ObjectId
 
 from app.models.schemas import CompareRequest
-from app.services.parser_service import parse_pdf_text
+from app.services.pdf_parser import parse_pdf_text
 from app.services.chunk_service import chunk_paper
 from app.services.vector_service import index_paper_chunks
 from app.services.extraction_service import extract_fields_for_paper
