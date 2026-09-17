@@ -12,7 +12,10 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeftCircle,
+  ChevronLeft,
+  ChevronRight,
   Database,
+  ExternalLink,
   FileText,
   FlaskConical,
   Search,
@@ -26,12 +29,14 @@ import {
   getExtraction,
   getPaper,
   parsePaper,
+  searchGlobalLiterature,
   searchPaper,
 } from "@/lib/api";
 import type {
   ChunkResult,
   Extraction,
   Paper,
+  PaperMetadata,
 } from "@/lib/types";
 import type { ExtractionResponse } from "@/lib/api";
 
@@ -45,7 +50,7 @@ type AnswerSource = {
 
 function getErrorMessage(
   error: unknown,
-  fallback: string,
+  fallback: string
 ): string {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -55,7 +60,7 @@ function getErrorMessage(
 }
 
 function normalizeExtraction(
-  data: ExtractionResponse | null,
+  data: ExtractionResponse | null
 ): Extraction | null {
   if (!data) {
     return null;
@@ -72,75 +77,780 @@ function normalizeExtraction(
   return data as Extraction;
 }
 
+/* =========================================================
+   RECOMMENDATION QUERY
+   ========================================================= */
+
+function buildRecommendationQuery(
+  paper: Paper,
+  extraction: Extraction
+): string {
+  const data = extraction as Record<string, unknown>;
+
+  const objective =
+    typeof data.objective === "string"
+      ? data.objective
+      : "";
+
+  const methodology =
+    typeof data.methodology === "string"
+      ? data.methodology
+      : "";
+
+  const dataset =
+    typeof data.dataset === "string"
+      ? data.dataset
+      : "";
+
+  const evaluationMetric =
+    typeof data.evaluation_metric === "string"
+      ? data.evaluation_metric
+      : "";
+
+  const keywordsValue = data.keywords;
+
+  const stopWords = new Set([
+    "this",
+    "that",
+    "these",
+    "those",
+    "using",
+    "used",
+    "based",
+    "paper",
+    "study",
+    "research",
+    "method",
+    "methods",
+    "approach",
+    "model",
+    "models",
+    "data",
+    "dataset",
+    "results",
+    "result",
+    "performance",
+    "evaluate",
+    "evaluated",
+    "evaluation",
+    "analysis",
+    "classification",
+    "classify",
+    "developed",
+    "develop",
+    "investigate",
+    "investigating",
+    "explore",
+    "exploring",
+    "assess",
+    "assessing",
+    "high",
+    "limited",
+    "limitedly",
+    "application",
+    "applications",
+    "proposed",
+    "propose",
+    "shows",
+    "shown",
+    "provide",
+    "provides",
+    "achieve",
+    "achieved",
+    "accuracy",
+    "f1",
+    "score",
+  ]);
+
+  const extractConcepts = (
+    value: string,
+    maxTerms: number
+  ): string[] => {
+    const words = value
+      .toLowerCase()
+      .replace(/[^a-zA-Z0-9\s-]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const concepts: string[] = [];
+
+    for (const word of words) {
+      const cleaned = word.trim();
+
+      if (
+        cleaned.length < 4 ||
+        stopWords.has(cleaned) ||
+        concepts.includes(cleaned)
+      ) {
+        continue;
+      }
+
+      concepts.push(cleaned);
+
+      if (concepts.length >= maxTerms) {
+        break;
+      }
+    }
+
+    return concepts;
+  };
+
+  const titleConcepts = extractConcepts(
+    paper.title || "",
+    5
+  );
+
+  const objectiveConcepts = extractConcepts(
+    objective,
+    6
+  );
+
+  const datasetConcepts = extractConcepts(
+    dataset,
+    6
+  );
+
+  const methodologyConcepts = extractConcepts(
+    methodology,
+    7
+  );
+
+  const metricConcepts = extractConcepts(
+    evaluationMetric,
+    2
+  );
+
+  let keywordConcepts: string[] = [];
+
+  if (Array.isArray(keywordsValue)) {
+    keywordConcepts = keywordsValue
+      .filter(
+        (value): value is string =>
+          typeof value === "string"
+      )
+      .flatMap((value) =>
+        extractConcepts(value, 2)
+      );
+  } else if (
+    typeof keywordsValue === "string"
+  ) {
+    keywordConcepts = extractConcepts(
+      keywordsValue,
+      6
+    );
+  }
+
+  const phrases: string[] = [];
+
+  const objectiveLower =
+    objective.toLowerCase();
+
+  const methodologyLower =
+    methodology.toLowerCase();
+
+  const datasetLower =
+    dataset.toLowerCase();
+
+  const titleLower =
+    (paper.title || "").toLowerCase();
+
+  if (
+    objectiveLower.includes("exoplanet") ||
+    titleLower.includes("exoplanet")
+  ) {
+    phrases.push("exoplanet detection");
+  }
+
+  if (
+    datasetLower.includes("kepler") ||
+    titleLower.includes("kepler")
+  ) {
+    phrases.push("Kepler");
+  }
+
+  if (
+    methodologyLower.includes(
+      "machine learning"
+    ) ||
+    titleLower.includes(
+      "machine learning"
+    )
+  ) {
+    phrases.push("machine learning");
+  }
+
+  if (
+    datasetLower.includes(
+      "light curve"
+    ) ||
+    datasetLower.includes(
+      "light-curve"
+    ) ||
+    objectiveLower.includes(
+      "light intensity"
+    ) ||
+    titleLower.includes(
+      "light intensity"
+    )
+  ) {
+    phrases.push("stellar light curves");
+  }
+
+  if (
+    methodologyLower.includes("knn")
+  ) {
+    phrases.push("KNN");
+  }
+
+  if (
+    methodologyLower.includes(
+      "logistic regression"
+    )
+  ) {
+    phrases.push(
+      "logistic regression"
+    );
+  }
+
+  if (
+    methodologyLower.includes(
+      "decision tree"
+    )
+  ) {
+    phrases.push("decision tree");
+  }
+
+  if (
+    methodologyLower.includes("smote")
+  ) {
+    phrases.push("SMOTE");
+  }
+
+  const combined = [
+    ...phrases,
+    ...titleConcepts,
+    ...objectiveConcepts,
+    ...datasetConcepts,
+    ...methodologyConcepts,
+    ...keywordConcepts,
+    ...metricConcepts,
+  ];
+
+  const unique = [
+    ...new Set(
+      combined
+        .map((item) => item.trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  return unique.join(" ").slice(0, 280);
+}
+
+/* =========================================================
+   RECOMMENDATION HELPERS
+   ========================================================= */
+
+function isLikelyEnglishTitle(
+  title: string
+): boolean {
+  const cleaned = title.replace(
+    /\s/g,
+    ""
+  );
+
+  if (!cleaned) {
+    return false;
+  }
+
+  const latinCharacters =
+    cleaned.match(/[A-Za-zÀ-ÿ]/g)
+      ?.length || 0;
+
+  const nonLatinCharacters =
+    cleaned.match(
+      /[^\x00-\x7FÀ-ÿ]/g
+    )?.length || 0;
+
+  if (
+    nonLatinCharacters > 0 &&
+    latinCharacters /
+      Math.max(cleaned.length, 1) <
+      0.55
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function normalizeTitle(
+  title: string
+): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getQueryTerms(
+  query: string
+): string[] {
+  const stopWords = new Set([
+    "this",
+    "that",
+    "these",
+    "those",
+    "with",
+    "from",
+    "using",
+    "used",
+    "into",
+    "their",
+    "they",
+    "them",
+    "were",
+    "have",
+    "has",
+    "been",
+    "being",
+    "which",
+    "where",
+    "when",
+    "than",
+    "such",
+    "also",
+    "paper",
+    "study",
+    "research",
+    "method",
+    "methods",
+    "approach",
+    "based",
+    "results",
+    "result",
+    "data",
+    "dataset",
+    "model",
+    "models",
+    "performance",
+    "analysis",
+    "using",
+    "proposed",
+    "developed",
+    "development",
+    "investigate",
+    "investigates",
+    "investigating",
+    "explore",
+    "explores",
+    "exploring",
+    "assess",
+    "assessing",
+    "evaluate",
+    "evaluated",
+    "evaluation",
+    "score",
+    "accuracy",
+  ]);
+
+  const tokens = query
+    .toLowerCase()
+    .split(
+      /[\s,.;:()[\]{}"'!?/\\|_+-]+/
+    )
+    .filter(Boolean);
+
+  return [
+    ...new Set(
+      tokens.filter(
+        (word) =>
+          word.length >= 4 &&
+          !stopWords.has(word) &&
+          /^[a-z0-9]+$/.test(word)
+      )
+    ),
+  ];
+}
+
+function getRecommendationReason(
+  paper: PaperMetadata,
+  query: string
+): string {
+  const title =
+    paper.title?.toLowerCase() || "";
+
+  const abstract =
+    paper.abstract?.toLowerCase() || "";
+
+  const queryTerms =
+    getQueryTerms(query);
+
+  const matchedTerms =
+    queryTerms.filter((term) => {
+      return (
+        title.includes(term) ||
+        abstract.includes(term)
+      );
+    });
+
+  const uniqueMatches = [
+    ...new Set(matchedTerms),
+  ].slice(0, 5);
+
+  if (uniqueMatches.length >= 4) {
+    return `Shares several key research concepts with your paper, including ${uniqueMatches.join(
+      ", "
+    )}.`;
+  }
+
+  if (uniqueMatches.length === 3) {
+    return `Overlaps with your paper in ${uniqueMatches.join(
+      ", "
+    )}.`;
+  }
+
+  if (uniqueMatches.length === 2) {
+    return `Shares research concepts around ${uniqueMatches[0]} and ${uniqueMatches[1]}.`;
+  }
+
+  if (uniqueMatches.length === 1) {
+    return `Shares the research concept of ${uniqueMatches[0]} with your paper.`;
+  }
+
+  return "Selected because its title and abstract contain concepts related to the extracted research focus.";
+}
+
+function getAuthors(
+  paper: PaperMetadata
+): string {
+  if (!paper.authors) {
+    return "Authors unavailable";
+  }
+
+  if (Array.isArray(paper.authors)) {
+    return paper.authors
+      .slice(0, 4)
+      .join(", ");
+  }
+
+  return String(paper.authors);
+}
+
+function getPaperUrl(
+  paper: PaperMetadata
+): string | undefined {
+  return (
+    paper.pdf_url ||
+    paper.url ||
+    undefined
+  );
+}
+
+/* =========================================================
+   PAGE
+   ========================================================= */
+
 export default function PaperDetailPage() {
-  const params = useParams<{ id: string }>();
+  const params =
+    useParams<{ id: string }>();
+
   const id = params?.id;
 
-  const [paper, setPaper] = useState<Paper | null>(null);
-  const [extraction, setExtraction] = useState<Extraction | null>(null);
-  const [results, setResults] = useState<ChunkResult[]>([]);
-  const [query, setQuery] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [answerSources, setAnswerSources] = useState<AnswerSource[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searching, setSearching] = useState(false);
-  const [answering, setAnswering] = useState(false);
-  const [parsing, setParsing] = useState(false);
-  const [extracting, setExtracting] = useState(false);
-  const [errorText, setErrorText] = useState("");
+  const [paper, setPaper] =
+    useState<Paper | null>(null);
 
-  const loadPaper = useCallback(async () => {
-    if (!id) {
-      return;
-    }
+  const [extraction, setExtraction] =
+    useState<Extraction | null>(null);
 
-    try {
-      setLoading(true);
-      setErrorText("");
+  const [results, setResults] =
+    useState<ChunkResult[]>([]);
 
-      const [paperData, extractionData] = await Promise.all([
-        getPaper(id),
-        getExtraction(id).catch(() => null),
-      ]);
+  const [query, setQuery] =
+    useState("");
 
-      setPaper(paperData);
-      setExtraction(normalizeExtraction(extractionData));
-    } catch (error) {
-      console.error("Failed to load paper:", error);
-      setErrorText(
-        getErrorMessage(error, "Failed to load the paper."),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  const [answer, setAnswer] =
+    useState("");
+
+  const [answerSources, setAnswerSources] =
+    useState<AnswerSource[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [searching, setSearching] =
+    useState(false);
+
+  const [answering, setAnswering] =
+    useState(false);
+
+  const [parsing, setParsing] =
+    useState(false);
+
+  const [extracting, setExtracting] =
+    useState(false);
+
+  const [recommendations, setRecommendations] =
+    useState<PaperMetadata[]>([]);
+
+  const [
+    recommendationLoading,
+    setRecommendationLoading,
+  ] = useState(false);
+
+  const [
+    recommendationQuery,
+    setRecommendationQuery,
+  ] = useState("");
+
+  const [
+    recommendationPaperId,
+    setRecommendationPaperId,
+  ] = useState<string | null>(null);
+
+  const [errorText, setErrorText] =
+    useState("");
+
+  /* =======================================================
+     GENERATE RECOMMENDATIONS
+     ======================================================= */
+
+  const generateRecommendations =
+    useCallback(
+      async (
+        currentPaper: Paper,
+        currentExtraction: Extraction
+      ) => {
+        if (!currentPaper.id) {
+          return;
+        }
+
+        try {
+          setRecommendationLoading(
+            true
+          );
+
+          setRecommendations([]);
+
+          setRecommendationPaperId(
+            currentPaper.id
+          );
+
+          const researchQuery =
+            buildRecommendationQuery(
+              currentPaper,
+              currentExtraction
+            );
+
+          if (!researchQuery.trim()) {
+            console.warn(
+              "No research concepts available for recommendations."
+            );
+            return;
+          }
+
+          console.log(
+            "[Recommendations] Query:",
+            researchQuery
+          );
+
+          setRecommendationQuery(
+            researchQuery
+          );
+
+          const related =
+            await searchGlobalLiterature(
+              researchQuery,
+              8
+            );
+
+          const currentTitle =
+            normalizeTitle(
+              currentPaper.title || ""
+            );
+
+          const seen = new Set<string>();
+
+          const filtered =
+            related.filter(
+              (recommended) => {
+                const title =
+                  recommended.title?.trim() ||
+                  "";
+
+                if (!title) {
+                  return false;
+                }
+
+                if (
+                  !isLikelyEnglishTitle(
+                    title
+                  )
+                ) {
+                  return false;
+                }
+
+                const normalized =
+                  normalizeTitle(title);
+
+                if (!normalized) {
+                  return false;
+                }
+
+                if (
+                  currentTitle &&
+                  normalized === currentTitle
+                ) {
+                  return false;
+                }
+
+                if (
+                  seen.has(normalized)
+                ) {
+                  return false;
+                }
+
+                seen.add(normalized);
+
+                return true;
+              }
+            );
+
+          setRecommendations(
+            filtered.slice(0, 8)
+          );
+        } catch (error) {
+          console.error(
+            "Recommendation generation failed:",
+            error
+          );
+
+          setRecommendations([]);
+        } finally {
+          setRecommendationLoading(
+            false
+          );
+        }
+      },
+      []
+    );
+
+  /* =======================================================
+     LOAD PAPER
+     ======================================================= */
+
+  const loadPaper =
+    useCallback(async () => {
+      if (!id) {
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setErrorText("");
+
+        const [
+          paperData,
+          extractionData,
+        ] = await Promise.all([
+          getPaper(id),
+          getExtraction(id).catch(
+            () => null
+          ),
+        ]);
+
+        const nextExtraction =
+          normalizeExtraction(
+            extractionData
+          );
+
+        setPaper(paperData);
+        setExtraction(nextExtraction);
+
+        if (
+          nextExtraction &&
+          paperData.status ===
+            "extracted" &&
+          recommendationPaperId !==
+            paperData.id
+        ) {
+          void generateRecommendations(
+            paperData,
+            nextExtraction
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load paper:",
+          error
+        );
+
+        setErrorText(
+          getErrorMessage(
+            error,
+            "Failed to load the paper."
+          )
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, [
+      id,
+      generateRecommendations,
+      recommendationPaperId,
+    ]);
 
   useEffect(() => {
     void loadPaper();
   }, [loadPaper]);
 
+  /* =======================================================
+     PARSE
+     ======================================================= */
+
   async function handleParse() {
-    if (!id || parsing || extracting) {
+    if (
+      !id ||
+      parsing ||
+      extracting
+    ) {
       return;
     }
 
     try {
       setParsing(true);
       setErrorText("");
+
       await parsePaper(id);
+
       await loadPaper();
     } catch (error) {
-      console.error("Parsing failed:", error);
+      console.error(
+        "Parsing failed:",
+        error
+      );
+
       setErrorText(
-        getErrorMessage(error, "Parsing failed."),
+        getErrorMessage(
+          error,
+          "Parsing failed."
+        )
       );
     } finally {
       setParsing(false);
     }
   }
 
+  /* =======================================================
+     EXTRACT
+     ======================================================= */
+
   async function handleExtract() {
-    if (!id || extracting || parsing) {
+    if (
+      !id ||
+      extracting ||
+      parsing
+    ) {
       return;
     }
 
@@ -148,25 +858,61 @@ export default function PaperDetailPage() {
       setExtracting(true);
       setErrorText("");
 
-      const response = await extractPaper(id);
-      const nextExtraction = normalizeExtraction(response);
+      const response =
+        await extractPaper(id);
 
-      setExtraction(nextExtraction);
+      const nextExtraction =
+        normalizeExtraction(response);
+
+      setExtraction(
+        nextExtraction
+      );
+
+      /*
+       * Recommendations are generated ONLY
+       * after structured extraction succeeds.
+       */
+      if (
+        nextExtraction &&
+        paper
+      ) {
+        await generateRecommendations(
+          paper,
+          nextExtraction
+        );
+      }
+
       await loadPaper();
     } catch (error) {
-      console.error("Extraction failed:", error);
+      console.error(
+        "Extraction failed:",
+        error
+      );
+
       setErrorText(
-        getErrorMessage(error, "Extraction failed."),
+        getErrorMessage(
+          error,
+          "Extraction failed."
+        )
       );
     } finally {
       setExtracting(false);
     }
   }
 
-  async function handleSearch() {
-    const value = query.trim();
+  /* =======================================================
+     SEARCH
+     ======================================================= */
 
-    if (!id || !value || searching) {
+  async function handleSearch() {
+    const value =
+      query.trim();
+
+    if (
+      !id ||
+      !value ||
+      searching
+    ) {
       return;
     }
 
@@ -176,22 +922,43 @@ export default function PaperDetailPage() {
       setAnswer("");
       setAnswerSources([]);
 
-      const data = await searchPaper(id, value);
+      const data =
+        await searchPaper(
+          id,
+          value
+        );
+
       setResults(data);
     } catch (error) {
-      console.error("Search failed:", error);
+      console.error(
+        "Search failed:",
+        error
+      );
+
       setErrorText(
-        getErrorMessage(error, "Search failed."),
+        getErrorMessage(
+          error,
+          "Search failed."
+        )
       );
     } finally {
       setSearching(false);
     }
   }
 
-  async function handleAskAI() {
-    const value = query.trim();
+  /* =======================================================
+     ASK AI
+     ======================================================= */
 
-    if (!id || !value || answering) {
+  async function handleAskAI() {
+    const value =
+      query.trim();
+
+    if (
+      !id ||
+      !value ||
+      answering
+    ) {
       return;
     }
 
@@ -199,19 +966,32 @@ export default function PaperDetailPage() {
       setAnswering(true);
       setErrorText("");
 
-      const response = await askPaper(id, value, 5);
+      const response =
+        await askPaper(
+          id,
+          value,
+          5
+        );
 
       setAnswer(
-        response.answer || "No answer was generated.",
+        response.answer ||
+          "No answer was generated."
       );
-      setAnswerSources(response.sources || []);
+
+      setAnswerSources(
+        response.sources || []
+      );
     } catch (error) {
-      console.error("AI answer failed:", error);
+      console.error(
+        "AI answer failed:",
+        error
+      );
+
       setErrorText(
         getErrorMessage(
           error,
-          "AI answer generation failed.",
-        ),
+          "AI answer generation failed."
+        )
       );
     } finally {
       setAnswering(false);
@@ -219,49 +999,93 @@ export default function PaperDetailPage() {
   }
 
   function handleQueryKeyDown(
-    event: KeyboardEvent<HTMLInputElement>,
+    event: KeyboardEvent<HTMLInputElement>
   ) {
     if (event.key === "Enter") {
       void handleAskAI();
     }
   }
 
+  /* =======================================================
+     EXTRACTION CARDS
+     ======================================================= */
+
   const extractedCards = [
     {
       label: "Objective",
-      value: extraction?.objective,
+      value:
+        extraction?.objective,
       icon: FlaskConical,
     },
     {
       label: "Methodology",
-      value: extraction?.methodology,
+      value:
+        extraction?.methodology,
       icon: Database,
     },
     {
       label: "Dataset",
-      value: extraction?.dataset,
+      value:
+        extraction?.dataset,
       icon: FileText,
     },
     {
       label: "Metric",
-      value: extraction?.evaluation_metric,
+      value:
+        extraction?.evaluation_metric,
       icon: Sparkles,
     },
     {
       label: "Limitations",
-      value: extraction?.limitations,
+      value:
+        extraction?.limitations,
       icon: Search,
     },
     {
       label: "Future work",
-      value: extraction?.future_work,
+      value:
+        extraction?.future_work,
       icon: ArrowLeftCircle,
     },
   ];
 
+  /* =======================================================
+     HORIZONTAL SCROLL
+     ======================================================= */
+
+  const scrollRecommendations =
+    (
+      direction:
+        | "left"
+        | "right"
+    ) => {
+      const container =
+        document.getElementById(
+          "recommended-papers"
+        );
+
+      if (!container) {
+        return;
+      }
+
+      container.scrollBy({
+        left:
+          direction === "left"
+            ? -380
+            : 380,
+        behavior: "smooth",
+      });
+    };
+
+  /* =======================================================
+     UI
+     ======================================================= */
+
   return (
     <AppShell>
       <div className="space-y-8">
+        {/* BACK */}
+
         <div className="flex items-center gap-3">
           <Link
             href="/dashboard"
@@ -271,6 +1095,8 @@ export default function PaperDetailPage() {
             Back to dashboard
           </Link>
         </div>
+
+        {/* ERROR */}
 
         {errorText && (
           <div
@@ -291,6 +1117,10 @@ export default function PaperDetailPage() {
           </div>
         ) : (
           <>
+            {/* =================================================
+                PAPER HEADER
+            ================================================= */}
+
             <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
               <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="max-w-3xl">
@@ -299,7 +1129,8 @@ export default function PaperDetailPage() {
                   </div>
 
                   <h1 className="break-words text-3xl font-semibold tracking-tight text-slate-900">
-                    {paper.title || "Untitled paper"}
+                    {paper.title ||
+                      "Untitled paper"}
                   </h1>
 
                   <p className="mt-3 break-words text-sm leading-6 text-slate-600">
@@ -311,6 +1142,7 @@ export default function PaperDetailPage() {
                       <h2 className="text-sm font-semibold text-slate-900">
                         Abstract
                       </h2>
+
                       <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
                         {paper.abstract}
                       </p>
@@ -323,8 +1155,10 @@ export default function PaperDetailPage() {
                     <p className="text-xs uppercase tracking-wide text-slate-400">
                       Year
                     </p>
+
                     <p className="mt-2 text-lg font-semibold text-slate-900">
-                      {paper.year || "—"}
+                      {paper.year ||
+                        "—"}
                     </p>
                   </div>
 
@@ -332,24 +1166,38 @@ export default function PaperDetailPage() {
                     <p className="text-xs uppercase tracking-wide text-slate-400">
                       Status
                     </p>
+
                     <p className="mt-2 text-lg font-semibold capitalize text-slate-900">
-                      {paper.status || "unknown"}
+                      {paper.status ||
+                        "unknown"}
                     </p>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => void handleParse()}
-                    disabled={parsing || extracting}
+                    onClick={() =>
+                      void handleParse()
+                    }
+                    disabled={
+                      parsing ||
+                      extracting
+                    }
                     className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
-                    {parsing ? "Parsing..." : "Parse paper"}
+                    {parsing
+                      ? "Parsing..."
+                      : "Parse paper"}
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => void handleExtract()}
-                    disabled={extracting || parsing}
+                    onClick={() =>
+                      void handleExtract()
+                    }
+                    disabled={
+                      extracting ||
+                      parsing
+                    }
                     className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {extracting
@@ -360,82 +1208,336 @@ export default function PaperDetailPage() {
               </div>
             </section>
 
+            {/* =================================================
+                STRUCTURED EXTRACTION
+            ================================================= */}
+
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5">
                 <h2 className="text-xl font-semibold text-slate-900">
                   Structured extraction
                 </h2>
+
                 <p className="text-sm text-slate-500">
-                  Key fields extracted from the paper
+                  Key fields extracted from
+                  the paper
                 </p>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {extractedCards.map((item) => {
-                  const Icon = item.icon;
-                  const value =
-                    typeof item.value === "string"
-                      ? item.value.trim()
-                      : "";
+                {extractedCards.map(
+                  (item) => {
+                    const Icon =
+                      item.icon;
 
-                  return (
-                    <div
-                      key={item.label}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
-                    >
-                      <div className="mb-3 flex items-center gap-3">
-                        <div className="rounded-xl bg-white p-2 shadow-sm">
-                          <Icon className="h-4 w-4 text-blue-600" />
+                    const value =
+                      typeof item.value ===
+                      "string"
+                        ? item.value.trim()
+                        : "";
+
+                    return (
+                      <div
+                        key={item.label}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
+                      >
+                        <div className="mb-3 flex items-center gap-3">
+                          <div className="rounded-xl bg-white p-2 shadow-sm">
+                            <Icon className="h-4 w-4 text-blue-600" />
+                          </div>
+
+                          <h3 className="font-semibold text-slate-900">
+                            {item.label}
+                          </h3>
                         </div>
-                        <h3 className="font-semibold text-slate-900">
-                          {item.label}
-                        </h3>
-                      </div>
 
-                      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
-                        {value || "Field does not exist."}
-                      </p>
-                    </div>
-                  );
-                })}
+                        <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
+                          {value ||
+                            "Field does not exist."}
+                        </p>
+                      </div>
+                    );
+                  }
+                )}
               </div>
             </section>
+
+            {/* =================================================
+                RECOMMENDED LITERATURE
+            ================================================= */}
+
+            {(recommendationLoading ||
+              recommendations.length >
+                0) && (
+              <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <h2 className="text-xl font-semibold text-slate-900">
+                        Recommended Literature
+                      </h2>
+
+                      <p className="mt-1 text-sm text-slate-500">
+                        Related research based
+                        on the topic, methodology,
+                        dataset, and findings
+                        extracted from this paper.
+                      </p>
+                    </div>
+                  </div>
+
+                  {!recommendationLoading &&
+                    recommendations.length >
+                      1 && (
+                      <div className="hidden gap-2 sm:flex">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            scrollRecommendations(
+                              "left"
+                            )
+                          }
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                          aria-label="Previous recommendations"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            scrollRecommendations(
+                              "right"
+                            )
+                          }
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                          aria-label="Next recommendations"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                </div>
+
+                {recommendationLoading ? (
+                  <div className="mt-6 flex gap-5 overflow-hidden">
+                    {[1, 2, 3].map(
+                      (item) => (
+                        <div
+                          key={item}
+                          className="min-w-[350px] shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-5"
+                        >
+                          <div className="h-10 w-10 animate-pulse rounded-xl bg-slate-200" />
+
+                          <div className="mt-4 h-5 w-4/5 animate-pulse rounded bg-slate-200" />
+
+                          <div className="mt-3 h-4 w-1/3 animate-pulse rounded bg-slate-200" />
+
+                          <div className="mt-5 space-y-2">
+                            <div className="h-3 w-full animate-pulse rounded bg-slate-200" />
+                            <div className="h-3 w-5/6 animate-pulse rounded bg-slate-200" />
+                            <div className="h-3 w-4/6 animate-pulse rounded bg-slate-200" />
+                          </div>
+
+                          <div className="mt-5 h-20 animate-pulse rounded-2xl bg-slate-200" />
+                        </div>
+                      )
+                    )}
+                  </div>
+                ) : recommendations.length >
+                  0 ? (
+                  <div
+                    id="recommended-papers"
+                    className="mt-6 flex gap-5 overflow-x-auto scroll-smooth pb-4 [scrollbar-width:thin]"
+                  >
+                    {recommendations.map(
+                      (
+                        recommendedPaper,
+                        index
+                      ) => {
+                        const title =
+                          recommendedPaper.title ||
+                          "Untitled paper";
+
+                        const url =
+                          getPaperUrl(
+                            recommendedPaper
+                          );
+
+                        const reason =
+                          getRecommendationReason(
+                            recommendedPaper,
+                            recommendationQuery
+                          );
+
+                        return (
+                          <article
+                            key={`${normalizeTitle(
+                              title
+                            )}-${index}`}
+                            className="flex min-w-[350px] max-w-[350px] shrink-0 flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm">
+                                <FileText className="h-4 w-4" />
+                              </div>
+
+                              {url && (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:text-slate-900"
+                                  aria-label={`Open ${title}`}
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                              )}
+                            </div>
+
+                            <h3 className="mt-4 line-clamp-3 text-base font-semibold leading-6 text-slate-900">
+                              {title}
+                            </h3>
+
+                            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                              {recommendedPaper.source && (
+                                <span className="rounded-full bg-white px-2.5 py-1 font-medium text-slate-600">
+                                  {
+                                    recommendedPaper.source
+                                  }
+                                </span>
+                              )}
+
+                              {recommendedPaper.year && (
+                                <span className="rounded-full bg-white px-2.5 py-1 text-slate-500">
+                                  {
+                                    recommendedPaper.year
+                                  }
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="mt-4 line-clamp-2 text-xs leading-5 text-slate-500">
+                              {getAuthors(
+                                recommendedPaper
+                              )}
+                            </p>
+
+                            <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50 p-4">
+                              <div className="flex items-center gap-2">
+                                <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">
+                                  Why recommended
+                                </p>
+                              </div>
+
+                              <p className="mt-2 text-xs leading-5 text-violet-900">
+                                {reason}
+                              </p>
+                            </div>
+
+                            <div className="mt-auto pt-5">
+                              {url ? (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700"
+                                >
+                                  Read paper
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                              ) : (
+                                <div className="rounded-xl bg-slate-200 px-4 py-2.5 text-center text-sm text-slate-500">
+                                  Paper link unavailable
+                                </div>
+                              )}
+                            </div>
+                          </article>
+                        );
+                      }
+                    )}
+                  </div>
+                ) : null}
+
+                {!recommendationLoading &&
+                  recommendations.length >
+                    0 && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Swipe horizontally to
+                      explore related papers.
+                    </p>
+                  )}
+              </section>
+            )}
+
+            {/* =================================================
+                ASK THE PAPER
+            ================================================= */}
 
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5">
                 <h2 className="text-xl font-semibold text-slate-900">
                   Ask the paper
                 </h2>
+
                 <p className="text-sm text-slate-500">
-                  Ask a detailed question and receive an AI-generated answer grounded in the paper.
+                  Ask a detailed question and
+                  receive an AI-generated answer
+                  grounded in the paper.
                 </p>
               </div>
 
               <div className="flex flex-col gap-3 md:flex-row">
                 <input
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={handleQueryKeyDown}
+                  onChange={(event) =>
+                    setQuery(
+                      event.target.value
+                    )
+                  }
+                  onKeyDown={
+                    handleQueryKeyDown
+                  }
                   placeholder="e.g. What dataset is used and why?"
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50"
                 />
 
                 <button
                   type="button"
-                  onClick={() => void handleAskAI()}
-                  disabled={answering || !query.trim()}
+                  onClick={() =>
+                    void handleAskAI()
+                  }
+                  disabled={
+                    answering ||
+                    !query.trim()
+                  }
                   className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
-                  {answering ? "Thinking..." : "Ask AI"}
+                  {answering
+                    ? "Thinking..."
+                    : "Ask AI"}
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => void handleSearch()}
-                  disabled={searching || !query.trim()}
+                  onClick={() =>
+                    void handleSearch()
+                  }
+                  disabled={
+                    searching ||
+                    !query.trim()
+                  }
                   className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
-                  {searching ? "Searching..." : "Search"}
+                  {searching
+                    ? "Searching..."
+                    : "Search"}
                 </button>
               </div>
 
@@ -443,35 +1545,53 @@ export default function PaperDetailPage() {
                 <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-6">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-5 w-5 text-blue-600" />
+
                     <h3 className="text-lg font-semibold text-slate-900">
                       AI research assistant
                     </h3>
                   </div>
 
                   <div className="ai-answer mt-4 break-words text-sm leading-7 text-slate-700">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown
+                      remarkPlugins={[
+                        remarkGfm,
+                      ]}
+                    >
                       {answer}
                     </ReactMarkdown>
                   </div>
 
-                  {answerSources.length > 0 && (
+                  {answerSources.length >
+                    0 && (
                     <div className="mt-5 border-t border-blue-100 pt-4">
                       <h4 className="text-sm font-semibold text-slate-900">
                         Retrieved sources
                       </h4>
 
                       <div className="mt-2 space-y-1 text-xs text-slate-600">
-                        {answerSources.map((source, index) => (
-                          <p
-                            key={`${source.paper_title || "paper"}-${source.page || "page"}-${index}`}
-                          >
-                            Source {source.source_number || index + 1}: {source.paper_title || "Paper"}
-                            {source.page ? `, page ${source.page}` : ""}
-                            {source.section_title
-                              ? `, ${source.section_title}`
-                              : ""}
-                          </p>
-                        ))}
+                        {answerSources.map(
+                          (
+                            source,
+                            index
+                          ) => (
+                            <p
+                              key={`${source.paper_title || "paper"}-${source.page || "page"}-${index}`}
+                            >
+                              Source{" "}
+                              {source.source_number ||
+                                index + 1}
+                              :{" "}
+                              {source.paper_title ||
+                                "Paper"}
+                              {source.page
+                                ? `, page ${source.page}`
+                                : ""}
+                              {source.section_title
+                                ? `, ${source.section_title}`
+                                : ""}
+                            </p>
+                          )
+                        )}
                       </div>
                     </div>
                   )}
@@ -479,37 +1599,47 @@ export default function PaperDetailPage() {
               )}
 
               <div className="mt-6 space-y-4">
-                {results.length === 0 ? (
+                {results.length ===
+                0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
                     No search results yet.
                   </div>
                 ) : (
-                  results.map((chunk) => (
-                    <div
-                      key={chunk.id}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
-                    >
-                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <span className="rounded-full bg-white px-3 py-1">
-                          {chunk.section_title || "Section"}
-                        </span>
-
-                        <span className="rounded-full bg-white px-3 py-1">
-                          Page {chunk.page ?? "—"}
-                        </span>
-
-                        {typeof chunk.score === "number" && (
-                          <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">
-                            Score {chunk.score.toFixed(2)}
+                  results.map(
+                    (chunk) => (
+                      <div
+                        key={chunk.id}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
+                      >
+                        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span className="rounded-full bg-white px-3 py-1">
+                            {chunk.section_title ||
+                              "Section"}
                           </span>
-                        )}
-                      </div>
 
-                      <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
-                        {chunk.text}
-                      </p>
-                    </div>
-                  ))
+                          <span className="rounded-full bg-white px-3 py-1">
+                            Page{" "}
+                            {chunk.page ??
+                              "—"}
+                          </span>
+
+                          {typeof chunk.score ===
+                            "number" && (
+                            <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">
+                              Score{" "}
+                              {chunk.score.toFixed(
+                                2
+                              )}
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
+                          {chunk.text}
+                        </p>
+                      </div>
+                    )
+                  )
                 )}
               </div>
             </section>
