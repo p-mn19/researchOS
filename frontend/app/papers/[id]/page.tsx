@@ -12,11 +12,15 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeftCircle,
+  BarChart3,
   Database,
   FileText,
   FlaskConical,
+  Lightbulb,
   Search,
   Sparkles,
+  Tag,
+  Target,
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app_shell";
@@ -27,21 +31,25 @@ import {
   getPaper,
   parsePaper,
   searchPaper,
+  type ExtractionResponse,
 } from "@/lib/api";
 import type {
+  AnswerSource,
   ChunkResult,
   Extraction,
   Paper,
 } from "@/lib/types";
-import type { ExtractionResponse } from "@/lib/api";
 
-type AnswerSource = {
-  source_number?: number;
-  paper_title?: string;
-  page?: number;
-  section_title?: string;
-  score?: number;
-};
+
+type SearchPaperResponse =
+  | ChunkResult[]
+  | {
+      query?: string;
+      top_k?: number;
+      count?: number;
+      results?: ChunkResult[];
+    };
+
 
 function getErrorMessage(
   error: unknown,
@@ -53,6 +61,7 @@ function getErrorMessage(
 
   return fallback;
 }
+
 
 function normalizeExtraction(
   data: ExtractionResponse | null,
@@ -71,6 +80,42 @@ function normalizeExtraction(
 
   return data as Extraction;
 }
+
+
+function normalizeSearchResults(
+  data: SearchPaperResponse,
+): ChunkResult[] {
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  if (
+    data &&
+    typeof data === "object" &&
+    Array.isArray(data.results)
+  ) {
+    return data.results;
+  }
+
+  return [];
+}
+
+
+function textValue(
+  value: string | string[] | null | undefined,
+): string {
+  if (Array.isArray(value)) {
+    return value
+      .filter(Boolean)
+      .join(", ")
+      .trim();
+  }
+
+  return typeof value === "string"
+    ? value.trim()
+    : "";
+}
+
 
 export default function PaperDetailPage() {
   const params = useParams<{ id: string }>();
@@ -127,6 +172,7 @@ export default function PaperDetailPage() {
     try {
       setParsing(true);
       setErrorText("");
+
       await parsePaper(id);
       await loadPaper();
     } catch (error) {
@@ -176,8 +222,13 @@ export default function PaperDetailPage() {
       setAnswer("");
       setAnswerSources([]);
 
-      const data = await searchPaper(id, value);
-      setResults(data);
+      const response = await searchPaper(id, value);
+
+      setResults(
+        normalizeSearchResults(
+          response as SearchPaperResponse,
+        ),
+      );
     } catch (error) {
       console.error("Search failed:", error);
       setErrorText(
@@ -198,13 +249,17 @@ export default function PaperDetailPage() {
     try {
       setAnswering(true);
       setErrorText("");
+      setResults([]);
 
       const response = await askPaper(id, value, 5);
 
       setAnswer(
         response.answer || "No answer was generated.",
       );
-      setAnswerSources(response.sources || []);
+
+      setAnswerSources(
+        response.sources || [],
+      );
     } catch (error) {
       console.error("AI answer failed:", error);
       setErrorText(
@@ -222,6 +277,7 @@ export default function PaperDetailPage() {
     event: KeyboardEvent<HTMLInputElement>,
   ) {
     if (event.key === "Enter") {
+      event.preventDefault();
       void handleAskAI();
     }
   }
@@ -229,33 +285,69 @@ export default function PaperDetailPage() {
   const extractedCards = [
     {
       label: "Objective",
-      value: extraction?.objective,
-      icon: FlaskConical,
+      value: extraction?.objective || paper?.objective,
+      icon: Target,
+      tone: "text-blue-600",
     },
     {
       label: "Methodology",
-      value: extraction?.methodology,
-      icon: Database,
+      value: extraction?.methodology || paper?.methodology,
+      icon: FlaskConical,
+      tone: "text-violet-600",
     },
     {
       label: "Dataset",
-      value: extraction?.dataset,
-      icon: FileText,
+      value: extraction?.dataset || paper?.dataset,
+      icon: Database,
+      tone: "text-cyan-600",
     },
     {
-      label: "Metric",
-      value: extraction?.evaluation_metric,
-      icon: Sparkles,
+      label: "Evaluation metric",
+      value:
+        extraction?.evaluation_metric ||
+        paper?.evaluation_metric,
+      icon: BarChart3,
+      tone: "text-emerald-600",
     },
     {
       label: "Limitations",
-      value: extraction?.limitations,
+      value:
+        extraction?.limitations ||
+        paper?.limitations,
       icon: Search,
+      tone: "text-orange-600",
     },
     {
       label: "Future work",
-      value: extraction?.future_work,
+      value:
+        extraction?.future_work ||
+        paper?.future_work,
       icon: ArrowLeftCircle,
+      tone: "text-rose-600",
+    },
+    {
+      label: "Research gap",
+      value:
+        extraction?.research_gap ||
+        paper?.research_gap,
+      icon: Lightbulb,
+      tone: "text-amber-600",
+    },
+    {
+      label: "Findings",
+      value:
+        extraction?.findings ||
+        paper?.findings,
+      icon: Sparkles,
+      tone: "text-indigo-600",
+    },
+    {
+      label: "Keywords",
+      value:
+        extraction?.keywords ||
+        paper?.keywords,
+      icon: Tag,
+      tone: "text-slate-600",
     },
   ];
 
@@ -306,11 +398,34 @@ export default function PaperDetailPage() {
                     {paper.filename}
                   </p>
 
+                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
+                    {paper.authors && paper.authors.length > 0 && (
+                      <span className="rounded-full bg-slate-100 px-3 py-1">
+                        {paper.authors.join(", ")}
+                      </span>
+                    )}
+
+                    {paper.year && (
+                      <span className="rounded-full bg-slate-100 px-3 py-1">
+                        {paper.year}
+                      </span>
+                    )}
+
+                    {paper.keywords &&
+                      paper.keywords.length > 0 && (
+                        <span className="rounded-full bg-slate-100 px-3 py-1">
+                          {paper.keywords.length} keyword
+                          {paper.keywords.length === 1 ? "" : "s"}
+                        </span>
+                      )}
+                  </div>
+
                   {paper.abstract && (
                     <div className="mt-6 rounded-2xl bg-slate-50 p-5">
                       <h2 className="text-sm font-semibold text-slate-900">
                         Abstract
                       </h2>
+
                       <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
                         {paper.abstract}
                       </p>
@@ -323,6 +438,7 @@ export default function PaperDetailPage() {
                     <p className="text-xs uppercase tracking-wide text-slate-400">
                       Year
                     </p>
+
                     <p className="mt-2 text-lg font-semibold text-slate-900">
                       {paper.year || "—"}
                     </p>
@@ -332,6 +448,7 @@ export default function PaperDetailPage() {
                     <p className="text-xs uppercase tracking-wide text-slate-400">
                       Status
                     </p>
+
                     <p className="mt-2 text-lg font-semibold capitalize text-slate-900">
                       {paper.status || "unknown"}
                     </p>
@@ -361,22 +478,28 @@ export default function PaperDetailPage() {
             </section>
 
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-5">
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Structured extraction
-                </h2>
-                <p className="text-sm text-slate-500">
-                  Key fields extracted from the paper
-                </p>
+              <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    Structured extraction
+                  </h2>
+
+                  <p className="text-sm text-slate-500">
+                    Research fields extracted from this paper. Module 8 uses these fields for corpus-level gap analysis.
+                  </p>
+                </div>
+
+                {paper.status !== "extracted" && (
+                  <p className="text-xs text-amber-700">
+                    Run extraction to populate all available fields.
+                  </p>
+                )}
               </div>
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {extractedCards.map((item) => {
                   const Icon = item.icon;
-                  const value =
-                    typeof item.value === "string"
-                      ? item.value.trim()
-                      : "";
+                  const value = textValue(item.value);
 
                   return (
                     <div
@@ -385,15 +508,18 @@ export default function PaperDetailPage() {
                     >
                       <div className="mb-3 flex items-center gap-3">
                         <div className="rounded-xl bg-white p-2 shadow-sm">
-                          <Icon className="h-4 w-4 text-blue-600" />
+                          <Icon
+                            className={`h-4 w-4 ${item.tone}`}
+                          />
                         </div>
+
                         <h3 className="font-semibold text-slate-900">
                           {item.label}
                         </h3>
                       </div>
 
                       <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
-                        {value || "Field does not exist."}
+                        {value || "Not available from extraction."}
                       </p>
                     </div>
                   );
@@ -406,15 +532,18 @@ export default function PaperDetailPage() {
                 <h2 className="text-xl font-semibold text-slate-900">
                   Ask the paper
                 </h2>
+
                 <p className="text-sm text-slate-500">
-                  Ask a detailed question and receive an AI-generated answer grounded in the paper.
+                  Retrieve evidence from this paper, then ask an AI question grounded in the retrieved passages.
                 </p>
               </div>
 
               <div className="flex flex-col gap-3 md:flex-row">
                 <input
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) =>
+                    setQuery(event.target.value)
+                  }
                   onKeyDown={handleQueryKeyDown}
                   placeholder="e.g. What dataset is used and why?"
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50"
@@ -443,6 +572,7 @@ export default function PaperDetailPage() {
                 <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-6">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-5 w-5 text-blue-600" />
+
                     <h3 className="text-lg font-semibold text-slate-900">
                       AI research assistant
                     </h3>
@@ -461,17 +591,25 @@ export default function PaperDetailPage() {
                       </h4>
 
                       <div className="mt-2 space-y-1 text-xs text-slate-600">
-                        {answerSources.map((source, index) => (
-                          <p
-                            key={`${source.paper_title || "paper"}-${source.page || "page"}-${index}`}
-                          >
-                            Source {source.source_number || index + 1}: {source.paper_title || "Paper"}
-                            {source.page ? `, page ${source.page}` : ""}
-                            {source.section_title
-                              ? `, ${source.section_title}`
-                              : ""}
-                          </p>
-                        ))}
+                        {answerSources.map(
+                          (source, index) => (
+                            <p
+                              key={`${source.paper_title || "paper"}-${source.page || "page"}-${index}`}
+                            >
+                              Source{" "}
+                              {source.source_number ||
+                                index + 1}
+                              :{" "}
+                              {source.paper_title || "Paper"}
+                              {source.page
+                                ? `, page ${source.page}`
+                                : ""}
+                              {source.section_title
+                                ? `, ${source.section_title}`
+                                : ""}
+                            </p>
+                          ),
+                        )}
                       </div>
                     </div>
                   )}
@@ -481,7 +619,8 @@ export default function PaperDetailPage() {
               <div className="mt-6 space-y-4">
                 {results.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-                    No search results yet.
+                    No search results yet. Enter a query and click
+                    Search to retrieve passages from this paper.
                   </div>
                 ) : (
                   results.map((chunk) => (
@@ -495,7 +634,10 @@ export default function PaperDetailPage() {
                         </span>
 
                         <span className="rounded-full bg-white px-3 py-1">
-                          Page {chunk.page ?? "—"}
+                          Page{" "}
+                          {chunk.page ??
+                            chunk.page_number ??
+                            "—"}
                         </span>
 
                         {typeof chunk.score === "number" && (
@@ -511,6 +653,36 @@ export default function PaperDetailPage() {
                     </div>
                   ))
                 )}
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-violet-100 bg-violet-50 p-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-violet-950">
+                    Continue with corpus-level research tools
+                  </h2>
+
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-violet-800">
+                    Once this paper has been extracted, select it with other relevant papers in Research Gap & Ideation or Manuscript Composer.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href="/ideation"
+                    className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+                  >
+                    Open Ideation
+                  </Link>
+
+                  <Link
+                    href="/manuscript"
+                    className="rounded-xl border border-violet-200 bg-white px-4 py-2 text-sm font-medium text-violet-800 transition hover:bg-violet-100"
+                  >
+                    Open Composer
+                  </Link>
+                </div>
               </div>
             </section>
           </>

@@ -7,8 +7,11 @@ import {
   LiteraturePaper,
   PaperMetadata,
   ReviewReport,
+  IdeationResponse,
+  SectionPlanResponse,
+  DraftSectionResponse,
+  SentencePlan,
 } from "./types";
-
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
 
@@ -119,4 +122,41 @@ export const generateReview = (
 ): Promise<ReviewReport> =>
   api<ReviewReport>(`/reviews/${paperId}`, {
     method: "POST",
+  });
+export const analyzeIdeation = (data: {
+  paper_ids: string[];
+  topic?: string;
+  idea_count?: number;
+}): Promise<IdeationResponse> =>
+  api<IdeationResponse>("/ideation/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+
+export const createSectionPlan = (data: {
+  paper_ids: string[];
+  section_type: "related_work" | "methodology";
+  research_topic?: string;
+  target_word_count?: number;
+}): Promise<SectionPlanResponse> =>
+  api<SectionPlanResponse>("/manuscript/plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+
+export const generateManuscriptSection = (data: {
+  paper_ids: string[];
+  section_type: "related_work" | "methodology";
+  research_topic?: string;
+  target_word_count?: number;
+  sentence_plan?: SentencePlan[];
+}): Promise<DraftSectionResponse> =>
+  api<DraftSectionResponse>("/manuscript/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
   });

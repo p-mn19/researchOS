@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
 from groq import Groq
@@ -10,9 +10,11 @@ client = None
 
 if settings.GROQ_API_KEY.strip():
     client = Groq(
-        api_key=settings.GROQ_API_KEY.strip()
+        api_key=settings.GROQ_API_KEY.strip(),
+        base_url="https://api.groq.com",
+        timeout=60.0,
+        max_retries=2,
     )
-
 
 SYSTEM_PROMPT = """
 You are ResearchOS, an academic research assistant.

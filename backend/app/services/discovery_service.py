@@ -1,7 +1,7 @@
 import asyncio
 import os
 import re
-from typing import List
+from typing import List, Dict, Any
 
 import arxiv
 import httpx

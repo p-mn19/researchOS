@@ -1,16 +1,22 @@
 from typing import Any, Dict, List
 
+
 from bson import ObjectId
+
 
 from app.db import extractions_collection, papers_collection
 
 
 COMPARE_FIELDS = [
+    "objective",
     "methodology",
     "dataset",
     "evaluation_metric",
     "limitations",
     "future_work",
+    "research_gap",
+    "findings",
+    "keywords",
 ]
 
 

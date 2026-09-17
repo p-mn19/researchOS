@@ -17,8 +17,3 @@ papers_collection = database["papers"]
 chunks_collection = database["chunks"]
 extractions_collection = database["extractions"]
 reviews_collection = database["reviews"]
-
-# Module 8 & 9 collections
-projects_collection = database["projects"]
-research_gaps_collection = database["research_gaps"]
-drafts_collection = database["drafts"]

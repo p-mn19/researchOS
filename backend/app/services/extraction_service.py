@@ -34,7 +34,10 @@ client = None
 
 if settings.GROQ_API_KEY.strip():
     client = Groq(
-        api_key=settings.GROQ_API_KEY.strip()
+        api_key=settings.GROQ_API_KEY.strip(),
+        base_url="https://api.groq.com",
+        timeout=60.0,
+        max_retries=2,
     )
 
 

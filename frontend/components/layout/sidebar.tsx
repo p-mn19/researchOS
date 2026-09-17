@@ -5,11 +5,14 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import {
   ClipboardCheck,
+  FilePenLine,
   FlaskConical,
   GitCompareArrows,
   LayoutDashboard,
+  Lightbulb,
   Search,
 } from "lucide-react";
+
 
 const items = [
   {
@@ -32,7 +35,18 @@ const items = [
     label: "Review Simulation",
     icon: ClipboardCheck,
   },
+  {
+    href: "/ideation",
+    label: "Research Gap & Ideation",
+    icon: Lightbulb,
+  },
+  {
+    href: "/manuscript",
+    label: "Manuscript Composer",
+    icon: FilePenLine,
+  },
 ];
+
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -57,8 +71,10 @@ export function Sidebar() {
       <nav className="space-y-2">
         {items.map((item) => {
           const Icon = item.icon;
+
           const active =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
+            pathname === item.href ||
+            pathname.startsWith(`${item.href}/`);
 
           return (
             <Link
@@ -68,7 +84,7 @@ export function Sidebar() {
                 "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all",
                 active
                   ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-100"
-                  : "text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm"
+                  : "text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm",
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
@@ -77,6 +93,15 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      <div className="mt-auto rounded-2xl border border-blue-100 bg-blue-50 p-4">
+        <p className="text-xs font-semibold text-blue-900">
+          ResearchOS AI Workspace
+        </p>
+        <p className="mt-1 text-xs leading-5 text-blue-700">
+          Extract, compare, ideate, and draft from your research corpus.
+        </p>
+      </div>
     </aside>
   );
 }
