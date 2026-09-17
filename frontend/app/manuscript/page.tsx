@@ -36,6 +36,15 @@ function errorMessage(error: unknown): string {
 }
 
 
+function countWords(text: string): number {
+  const plainText = text
+    .replace(/[`*_>#\[\]()]/g, " ")
+    .trim();
+
+  return plainText ? plainText.split(/\s+/).length : 0;
+}
+
+
 export default function ManuscriptPage() {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [selectedPaperIds, setSelectedPaperIds] = useState<string[]>([]);
@@ -56,6 +65,11 @@ export default function ManuscriptPage() {
   const extractedPapers = useMemo(
     () => papers.filter((paper) => paper.status === "extracted"),
     [papers],
+  );
+
+  const draftWordCount = useMemo(
+    () => countWords(draftText),
+    [draftText],
   );
 
 
@@ -512,6 +526,9 @@ export default function ManuscriptPage() {
                 <h3 className="text-sm font-semibold text-slate-900">
                   Editable draft
                 </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {draftWordCount} words / {targetWords} target
+                </p>
 
                 <textarea
                   value={draftText}

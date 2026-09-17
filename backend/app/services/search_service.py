@@ -326,10 +326,10 @@ def _search_chunks(
                 "filename": paper.get(
                     "filename"
                 ),
-                "section_title": None,
-                "page": None,
+                "section_title": section_title,
+                "page": page,
                 "text": _create_snippet(
-                    full_text,
+                    original_text,
                     query,
                     max_length=1800,
                 ),

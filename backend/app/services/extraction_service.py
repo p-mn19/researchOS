@@ -46,8 +46,11 @@ You extract structured information from an academic paper.
 
 Use only the supplied paper text.
 Do not invent facts.
-If the paper does not provide information for a field,
-return an empty string.
+For limitations and future_work, first use an explicit statement from the
+paper. If there is none, summarize a concrete study constraint or proposed
+next step only when it is directly supported by the supplied text. Otherwise,
+return "Not explicitly stated in the supplied paper text."
+For other fields, return an empty string when information is unavailable.
 
 Return valid JSON only.
 Do not use Markdown fences.
@@ -381,7 +384,9 @@ Paper text:
 
 Return exactly one JSON object using only
 the requested field names.
-Use an empty string for missing information.
+For limitations and future_work with no supported information, use exactly
+"Not explicitly stated in the supplied paper text." For other missing fields,
+use an empty string.
 For 'keywords', return a JSON array of 5–10 short terms.
 Keep every non-empty field to 80 words or fewer,
 then ensure the JSON object is closed.

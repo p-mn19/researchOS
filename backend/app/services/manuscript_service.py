@@ -299,6 +299,13 @@ def _safe_sentence_plan(
     return plans
 
 
+def _completion_content(completion: Any) -> str:
+    if not completion.choices:
+        return ""
+
+    return completion.choices[0].message.content or ""
+
+
 def _citation_sources(
     papers: List[Dict[str, Any]],
 ) -> List[CitationSource]:
@@ -367,7 +374,6 @@ PAPER EVIDENCE:
             model=settings.GROQ_MODEL,
             temperature=0.25,
             max_tokens=2200,
-            response_format={"type": "json_object"},
             messages=[
                 {
                     "role": "system",
@@ -385,14 +391,60 @@ PAPER EVIDENCE:
             detail=f"Section-plan generation failed: {str(exc)}",
         ) from exc
 
-    content = (
-        completion.choices[0].message.content
-        if completion.choices
-        else "{}"
+    valid_paper_ids = [paper["paper_id"] for paper in papers]
+    content = _completion_content(completion)
+    parsed = _parse_json(content)
+    sentence_plan = _safe_sentence_plan(
+        parsed.get("sentence_plan"),
+        valid_paper_ids,
     )
 
-    parsed = _parse_json(content)
-    valid_paper_ids = [paper["paper_id"] for paper in papers]
+    # Some models occasionally return prose or incomplete JSON despite the
+    # prompt. Ask once for a corrected response before showing an empty plan.
+    if not sentence_plan:
+        correction_prompt = """
+Your previous response could not be used as a sentence plan.
+Return the requested plan now as one valid JSON object only. Do not include
+Markdown, commentary, or code fences. Include a non-empty `sentence_plan`
+array whose items each contain `sentence_number`, `purpose`, `claim`, and
+`citation_paper_ids` using only the supplied paper IDs.
+""".strip()
+
+        try:
+            retry_completion = client.chat.completions.create(
+                model=settings.GROQ_MODEL,
+                temperature=0.1,
+                max_tokens=2200,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": PLAN_SYSTEM_PROMPT,
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    },
+                    {
+                        "role": "assistant",
+                        "content": content,
+                    },
+                    {
+                        "role": "user",
+                        "content": correction_prompt,
+                    },
+                ],
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Section-plan retry failed: {str(exc)}",
+            ) from exc
+
+        parsed = _parse_json(_completion_content(retry_completion))
+        sentence_plan = _safe_sentence_plan(
+            parsed.get("sentence_plan"),
+            valid_paper_ids,
+        )
 
     return SectionPlanResponse(
         section_type=request.section_type,
@@ -401,10 +453,7 @@ PAPER EVIDENCE:
             f"Develop a citation-grounded "
             f"{_section_title(request.section_type)} section."
         ),
-        sentence_plan=_safe_sentence_plan(
-            parsed.get("sentence_plan"),
-            valid_paper_ids,
-        ),
+        sentence_plan=sentence_plan,
         recommended_sources=_citation_sources(papers),
         model=settings.GROQ_MODEL,
     )
@@ -483,6 +532,54 @@ def _build_plan_context(
             for item in sentence_plan
         ]
     )
+
+
+def _plan_as_editable_draft(
+    request: DraftSectionRequest,
+) -> str:
+    """Create an honest editable fallback when a model returns no draft."""
+    title = _section_title(request.section_type)
+    sentence_plan = request.sentence_plan
+
+    if not sentence_plan:
+        return (
+            f"# {title}\n\n"
+            "No draft text was returned. Create a section plan first, then "
+            "generate the draft again."
+        )
+
+    words_per_item = max(
+        1,
+        round(request.target_word_count / len(sentence_plan)),
+    )
+    blocks = [
+        f"# {title}",
+        (
+            "*Editable outline generated from the sentence plan. Expand and "
+            f"revise each item toward the {request.target_word_count}-word target.*"
+        ),
+    ]
+
+    for item in sentence_plan:
+        citations = " ".join(
+            f"[{paper_id}]"
+            for paper_id in item.citation_paper_ids
+        )
+        blocks.append(
+            "\n".join(
+                [
+                    (
+                        f"## Sentence {item.sentence_number} "
+                        f"(~{words_per_item} words)"
+                    ),
+                    item.claim,
+                    f"*Purpose: {item.purpose}*",
+                    citations,
+                ]
+            ).strip()
+        )
+
+    return "\n\n".join(blocks)
 
 
 def generate_draft_section(
@@ -574,6 +671,9 @@ Only use paper IDs from the evidence above.
         and completion.choices[0].message.content
         else ""
     )
+
+    if not markdown:
+        markdown = _plan_as_editable_draft(request)
 
     citations = _citation_sources(papers)
 

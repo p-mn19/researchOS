@@ -61,6 +61,17 @@ Return exactly this JSON shape:
 """.strip()
 
 
+NO_LIMITATION_EXTRACTED = (
+    "No limitation was extracted from the available paper text; "
+    "review the source paper for study constraints."
+)
+
+NO_FUTURE_WORK_EXTRACTED = (
+    "No future-work recommendation was extracted from the available paper text; "
+    "review the source paper for proposed next steps."
+)
+
+
 def _clean_text(value: Any) -> str:
     if value is None:
         return ""
@@ -370,7 +381,6 @@ PAPER EVIDENCE:
             model=settings.GROQ_MODEL,
             temperature=0.35,
             max_tokens=2800,
-            response_format={"type": "json_object"},
             messages=[
                 {
                     "role": "system",
@@ -389,8 +399,8 @@ PAPER EVIDENCE:
         ) from exc
 
     content = (
-        completion.choices.message.content[0]
-        if completion.choices
+        completion.choices[0].message.content
+        if completion.choices and completion.choices[0].message.content
         else "{}"
     )
 
@@ -401,8 +411,14 @@ PAPER EVIDENCE:
         EvidencePaper(
             paper_id=paper["paper_id"],
             title=paper["title"],
-            limitation=paper["limitations"] or None,
-            future_work=paper["future_work"] or None,
+            limitation=(
+                paper["limitations"]
+                or NO_LIMITATION_EXTRACTED
+            ),
+            future_work=(
+                paper["future_work"]
+                or NO_FUTURE_WORK_EXTRACTED
+            ),
             research_gap=paper["research_gap"] or None,
             methodology=paper["methodology"] or None,
         )
