@@ -1,19 +1,32 @@
-import {
+import type {
   ChunkResult,
   CompareRow,
+  DraftSectionResponse,
   Extraction,
+  FullPaperOutline,
+  IdeationResponse,
   Paper,
   PaperAnswer,
-  LiteraturePaper,
   PaperMetadata,
+  PaperSearchResponse,
+  ResearchIdea,
   ReviewReport,
-  IdeationResponse,
   SectionPlanResponse,
-  DraftSectionResponse,
   SentencePlan,
+  Workspace,
+  WorkspaceCitation,
+  WorkspaceContentType,
+  WorkspaceGenerationMode,
+  WorkspaceGenerationResponse,
+  WorkspaceSectionResult,
+  WorkspaceVersion,
 } from "./types";
+
+
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_BASE ||
+  "http://127.0.0.1:8000";
+
 
 export type ExtractionResponse =
   | Extraction
@@ -21,88 +34,203 @@ export type ExtractionResponse =
       extraction?: Extraction;
     };
 
-async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      ...(options?.headers || {}),
+
+async function api<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
+  const response = await fetch(
+    `${API_BASE}${path}`,
+    {
+      ...options,
+      headers: {
+        ...(options?.headers || {}),
+      },
+      cache: "no-store",
     },
-    cache: "no-store",
-  });
+  );
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`API ${response.status}: ${text || "Request failed"}`);
+
+    throw new Error(
+      `API ${response.status}: ${
+        text || "Request failed"
+      }`,
+    );
   }
 
   return response.json() as Promise<T>;
 }
 
-export const getPapers = (): Promise<Paper[]> => api<Paper[]>("/papers");
 
-export const getPaper = (id: string): Promise<Paper> =>
+/* ============================================================
+   Papers
+   ============================================================ */
+
+export const getPapers = (): Promise<Paper[]> =>
+  api<Paper[]>("/papers");
+
+
+export const getPaper = (
+  id: string,
+): Promise<Paper> =>
   api<Paper>(`/papers/${id}`);
 
-export const getExtraction = (id: string): Promise<ExtractionResponse> =>
-  api<ExtractionResponse>(`/papers/${id}/extraction`);
 
-export const searchPaper = (id: string, query: string): Promise<ChunkResult[]> =>
-  api<ChunkResult[]>(`/papers/${id}/search`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
-  });
+export const getExtraction = (
+  id: string,
+): Promise<ExtractionResponse> =>
+  api<ExtractionResponse>(
+    `/papers/${id}/extraction`,
+  );
+
+
+export const searchPaper = (
+  id: string,
+  query: string,
+  topK = 5,
+): Promise<PaperSearchResponse> =>
+  api<PaperSearchResponse>(
+    `/papers/${id}/search`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        top_k: topK,
+      }),
+    },
+  );
+
 
 export const askPaper = (
   id: string,
   question: string,
   topK = 5,
 ): Promise<PaperAnswer> =>
-  api<PaperAnswer>(`/papers/${id}/answer`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, top_k: topK }),
-  });
+  api<PaperAnswer>(
+    `/papers/${id}/answer`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        question,
+        top_k: topK,
+      }),
+    },
+  );
 
-export const comparePapers = (
-  paperIds: string[],
-): Promise<{ rows: CompareRow[] }> =>
-  api<{ rows: CompareRow[] }>("/compare", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ paper_ids: paperIds }),
-  });
 
-export async function uploadPaper(file: File) {
+export async function uploadPaper(
+  file: File,
+): Promise<{
+  id: string;
+  filename: string;
+  title: string;
+  status: string;
+}> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${API_BASE}/papers/upload`, {
-    method: "POST",
-    body: formData,
-  });
+  const response = await fetch(
+    `${API_BASE}/papers/upload`,
+    {
+      method: "POST",
+      body: formData,
+    },
+  );
 
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || "Upload failed");
   }
 
-  return response.json();
+  return response.json() as Promise<{
+    id: string;
+    filename: string;
+    title: string;
+    status: string;
+  }>;
 }
 
-export const parsePaper = (id: string) =>
-  api(`/papers/${id}/parse`, { method: "POST" });
 
-export const extractPaper = (id: string) =>
-  api(`/papers/${id}/extract`, { method: "POST" });
+export const parsePaper = (
+  id: string,
+) =>
+  api(`/papers/${id}/parse`, {
+    method: "POST",
+  });
+
+
+export const extractPaper = (
+  id: string,
+): Promise<ExtractionResponse> =>
+  api<ExtractionResponse>(
+    `/papers/${id}/extract`,
+    {
+      method: "POST",
+    },
+  );
+
+
+/* ============================================================
+   Compare and Review
+   ============================================================ */
+
+export const comparePapers = (
+  paperIds: string[],
+): Promise<{
+  rows: CompareRow[];
+  paper_map?: Record<string, string>;
+}> =>
+  api<{
+    rows: CompareRow[];
+    paper_map?: Record<string, string>;
+  }>("/compare", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      paper_ids: paperIds,
+    }),
+  });
+
+
+export const generateReview = (
+  paperId: string,
+): Promise<ReviewReport> =>
+  api<ReviewReport>(
+    `/reviews/${paperId}`,
+    {
+      method: "POST",
+    },
+  );
+
+
+/* ============================================================
+   Literature Discovery
+   ============================================================ */
 
 export const searchGlobalLiterature = async (
   query: string,
   limit = 5,
 ): Promise<PaperMetadata[]> => {
-  const params = new URLSearchParams({ query: query.trim(), limit: String(limit) });
-  return api<PaperMetadata[]>(`/discovery/search?${params.toString()}`);
+  const params = new URLSearchParams({
+    query: query.trim(),
+    limit: String(limit),
+  });
+
+  return api<PaperMetadata[]>(
+    `/discovery/search?${params.toString()}`,
+  );
 };
+
 
 export const searchDiscoveryPapers = async (
   query: string,
@@ -113,27 +241,42 @@ export const searchDiscoveryPapers = async (
     limit: String(limit),
   });
 
-  const response = await api<unknown>(`/search/discovery?${params.toString()}`);
-  return Array.isArray(response) ? (response as PaperMetadata[]) : [];
+  const response = await api<unknown>(
+    `/search/discovery?${params.toString()}`,
+  );
+
+  return Array.isArray(response)
+    ? (response as PaperMetadata[])
+    : [];
 };
 
-export const generateReview = (
-  paperId: string,
-): Promise<ReviewReport> =>
-  api<ReviewReport>(`/reviews/${paperId}`, {
-    method: "POST",
-  });
+
+/* ============================================================
+   Module 8 — Research Gap and Ideation
+   ============================================================ */
+
 export const analyzeIdeation = (data: {
   paper_ids: string[];
   topic?: string;
   idea_count?: number;
 }): Promise<IdeationResponse> =>
-  api<IdeationResponse>("/ideation/analyze", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
+  api<IdeationResponse>(
+    "/ideation/analyze",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+  );
 
+
+/* ============================================================
+   Legacy Manuscript Composer
+   These can be removed after the old manuscript service/routes
+   are no longer used anywhere in the frontend.
+   ============================================================ */
 
 export const createSectionPlan = (data: {
   paper_ids: string[];
@@ -141,11 +284,16 @@ export const createSectionPlan = (data: {
   research_topic?: string;
   target_word_count?: number;
 }): Promise<SectionPlanResponse> =>
-  api<SectionPlanResponse>("/manuscript/plan", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
+  api<SectionPlanResponse>(
+    "/manuscript/plan",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+  );
 
 
 export const generateManuscriptSection = (data: {
@@ -155,8 +303,161 @@ export const generateManuscriptSection = (data: {
   target_word_count?: number;
   sentence_plan?: SentencePlan[];
 }): Promise<DraftSectionResponse> =>
-  api<DraftSectionResponse>("/manuscript/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
+  api<DraftSectionResponse>(
+    "/manuscript/generate",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+  );
+
+
+/* ============================================================
+   Module 9 — Research Workspace
+   ============================================================ */
+
+export const createWorkspace = (data: {
+  title: string;
+  description?: string;
+  paper_ids: string[];
+  idea: ResearchIdea;
+  research_objective?: string;
+}): Promise<Workspace> =>
+  api<Workspace>(
+    "/workspaces",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+  );
+
+
+export const getWorkspaces = (): Promise<Workspace[]> =>
+  api<Workspace[]>("/workspaces");
+
+
+export const getWorkspace = (
+  workspaceId: string,
+): Promise<Workspace> =>
+  api<Workspace>(
+    `/workspaces/${workspaceId}`,
+  );
+
+
+export const updateWorkspace = (
+  workspaceId: string,
+  data: Partial<{
+    title: string;
+    description: string;
+    paper_ids: string[];
+    idea: ResearchIdea;
+    research_objective: string;
+  }>,
+): Promise<Workspace> =>
+  api<Workspace>(
+    `/workspaces/${workspaceId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+  );
+
+
+export type GenerateWorkspaceSectionInput = {
+  generation_mode: "section";
+
+  content_type: WorkspaceContentType;
+
+  target_word_count?: number;
+  generate_latex?: boolean;
+  generate_bibtex?: boolean;
+
+  citation_style?: "internal" | "latex";
+  instructions?: string;
+};
+
+
+export type GenerateWorkspaceFullPaperInput = {
+  generation_mode: "full_paper";
+
+  /*
+   * content_type is intentionally omitted in full-paper mode.
+   * The backend orchestrates all full-paper sections.
+   */
+  target_word_count?: number;
+  generate_latex?: boolean;
+  generate_bibtex?: boolean;
+
+  citation_style?: "internal" | "latex";
+  instructions?: string;
+};
+
+
+export type GenerateWorkspaceContentInput =
+  | GenerateWorkspaceSectionInput
+  | GenerateWorkspaceFullPaperInput;
+
+
+export const generateWorkspaceContent = (
+  workspaceId: string,
+  data: GenerateWorkspaceContentInput,
+): Promise<WorkspaceGenerationResponse> =>
+  api<WorkspaceGenerationResponse>(
+    `/workspaces/${workspaceId}/generate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+  );
+
+
+export const saveWorkspaceVersion = (
+  workspaceId: string,
+  data: {
+    generation_mode: WorkspaceGenerationMode;
+    content_type?: WorkspaceContentType | null;
+
+    content_markdown: string;
+    latex_code: string;
+
+    citations?: WorkspaceCitation[];
+    warnings?: string[];
+    source_chunk_ids?: string[];
+
+    outline?: FullPaperOutline | null;
+    sections?: WorkspaceSectionResult[];
+    full_paper_markdown?: string;
+    full_paper_latex?: string;
+    bibtex?: string;
+  },
+): Promise<WorkspaceVersion> =>
+  api<WorkspaceVersion>(
+    `/workspaces/${workspaceId}/versions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+  );
+
+
+export const getWorkspaceVersions = (
+  workspaceId: string,
+): Promise<WorkspaceVersion[]> =>
+  api<WorkspaceVersion[]>(
+    `/workspaces/${workspaceId}/versions`,
+  );

@@ -22,7 +22,6 @@ export interface Paper {
 
   status: PaperStatus;
 
-  // Structured extraction fields
   objective?: string | null;
   methodology?: string | null;
   dataset?: string | null;
@@ -45,7 +44,6 @@ export interface Extraction {
   limitations?: string | null;
   future_work?: string | null;
 
-  // Module 8 and Module 9 fields
   research_gap?: string | null;
   findings?: string | null;
   keywords?: string[];
@@ -78,6 +76,14 @@ export interface ChunkResult {
   score?: number;
 
   metadata?: SearchMetadata | null;
+}
+
+
+export interface PaperSearchResponse {
+  query: string;
+  top_k: number;
+  count: number;
+  results: ChunkResult[];
 }
 
 
@@ -139,7 +145,6 @@ export interface ReviewReport {
   summary: string;
   dimensions: ReviewDimension[];
 
-  // Optional expanded review data
   research_gap?: string;
   findings?: string;
   future_work?: string;
@@ -147,6 +152,10 @@ export interface ReviewReport {
   methodology?: string;
 }
 
+
+/* ============================================================
+   Module 8 — Research Gap and Ideation
+   ============================================================ */
 
 export type IdeationEvidencePaper = {
   paper_id: string;
@@ -179,6 +188,11 @@ export type IdeationResponse = {
   model: string;
 };
 
+
+/* ============================================================
+   Legacy Manuscript Composer
+   Kept only while old /manuscript routes exist.
+   ============================================================ */
 
 export type SentencePlan = {
   sentence_number: number;
@@ -216,3 +230,162 @@ export type DraftSectionResponse = {
   citations: CitationSource[];
   model: string;
 };
+
+
+/* ============================================================
+   Module 9 — Research Workspace
+   ============================================================ */
+
+export type WorkspaceContentType =
+  | "introduction"
+  | "research_problem"
+  | "research_objectives"
+  | "research_questions"
+  | "hypotheses"
+  | "related_work"
+  | "methodology"
+  | "proposed_framework"
+  | "experimental_design"
+  | "evaluation_plan"
+  | "expected_contributions"
+  | "limitations_and_scope"
+  | "abstract_draft"
+  | "conclusion";
+
+
+export type WorkspaceGenerationMode =
+  | "section"
+  | "full_paper";
+
+
+export type WorkspacePaperSectionKey =
+  | "abstract"
+  | "keywords"
+  | "introduction"
+  | "research_problem"
+  | "research_objectives"
+  | "research_questions"
+  | "hypotheses"
+  | "related_work"
+  | "proposed_methodology"
+  | "proposed_framework"
+  | "experimental_design"
+  | "evaluation_plan"
+  | "expected_contributions"
+  | "limitations_and_scope"
+  | "conclusion";
+
+
+export type WorkspaceIdea = ResearchIdea;
+
+
+export interface Workspace {
+  id: string;
+  title: string;
+  description: string;
+  paper_ids: string[];
+  idea: WorkspaceIdea;
+  research_objective: string;
+  created_at: string;
+  updated_at: string;
+}
+
+
+export interface WorkspaceCitation {
+  paper_id: string;
+  title: string;
+  authors: string[];
+  year?: number | null;
+  venue?: string | null;
+  doi?: string | null;
+  citation_key: string;
+  section_title?: string | null;
+  page?: number | null;
+}
+
+
+export interface FullPaperSectionPlan {
+  key: WorkspacePaperSectionKey;
+  title: string;
+  purpose: string;
+  target_word_count: number;
+  evidence_paper_ids: string[];
+}
+
+
+export interface FullPaperOutline {
+  paper_title: string;
+  abstract_target_word_count: number;
+  keywords: string[];
+  sections: FullPaperSectionPlan[];
+  model: string;
+}
+
+
+export interface WorkspaceSectionResult {
+  key: WorkspacePaperSectionKey;
+  title: string;
+  content_markdown: string;
+  latex_code: string;
+  citations: WorkspaceCitation[];
+  warnings: string[];
+  source_chunk_ids: string[];
+  status: "generated" | "failed";
+  error?: string | null;
+}
+
+
+export interface WorkspaceGenerationResponse {
+  workspace_id: string;
+
+  generation_mode: WorkspaceGenerationMode;
+
+  /*
+   * Present for generation_mode = "section".
+   * null/undefined for generation_mode = "full_paper".
+   */
+  content_type?: WorkspaceContentType | null;
+
+  title: string;
+  content_markdown: string;
+  latex_code: string;
+
+  citations: WorkspaceCitation[];
+  warnings: string[];
+  source_chunk_ids: string[];
+  model: string;
+
+  /*
+   * Full-paper-specific response fields.
+   */
+  outline?: FullPaperOutline | null;
+  sections: WorkspaceSectionResult[];
+  full_paper_markdown: string;
+  full_paper_latex: string;
+  bibtex: string;
+}
+
+
+export interface WorkspaceVersion {
+  id: string;
+  workspace_id: string;
+
+  generation_mode: WorkspaceGenerationMode;
+  content_type?: WorkspaceContentType | null;
+
+  content_markdown: string;
+  latex_code: string;
+
+  citations: WorkspaceCitation[];
+  warnings: string[];
+  source_chunk_ids: string[];
+
+  outline?: FullPaperOutline | null;
+  sections: WorkspaceSectionResult[];
+  full_paper_markdown: string;
+  full_paper_latex: string;
+  bibtex: string;
+
+  version: number;
+  created_at: string;
+}

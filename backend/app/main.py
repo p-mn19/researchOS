@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.api.routes import compare, review
-from app.api.routes import ideation, manuscript
+from app.api.routes import ideation, workspaces
 from app.routers import answers, papers, search, discovery
 
 
@@ -34,8 +34,7 @@ app.include_router(review.router)
 
 # New standalone modules
 app.include_router(ideation.router)
-app.include_router(manuscript.router)
-
+app.include_router(workspaces.router)
 
 @app.get("/")
 def root():

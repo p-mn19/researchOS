@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import {
   ClipboardCheck,
-  FilePenLine,
+  FileCode2,
   FlaskConical,
   GitCompareArrows,
   LayoutDashboard,
@@ -41,9 +41,9 @@ const items = [
     icon: Lightbulb,
   },
   {
-    href: "/manuscript",
-    label: "Manuscript Composer",
-    icon: FilePenLine,
+    href: "/workspace",
+    label: "Research Workspace",
+    icon: FileCode2,
   },
 ];
 
@@ -62,6 +62,7 @@ export function Sidebar() {
           <h1 className="text-lg font-semibold text-slate-900">
             ResearchOS
           </h1>
+
           <p className="text-xs text-slate-500">
             Research workflow copilot
           </p>
@@ -98,8 +99,9 @@ export function Sidebar() {
         <p className="text-xs font-semibold text-blue-900">
           ResearchOS AI Workspace
         </p>
+
         <p className="mt-1 text-xs leading-5 text-blue-700">
-          Extract, compare, ideate, and draft from your research corpus.
+          Extract, compare, ideate, and generate content with LaTeX from your research corpus.
         </p>
       </div>
     </aside>
