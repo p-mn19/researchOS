@@ -486,39 +486,57 @@ function getRecommendationReason(
   const queryTerms =
     getQueryTerms(query);
 
-  const matchedTerms =
-    queryTerms.filter((term) => {
-      return (
-        title.includes(term) ||
-        abstract.includes(term)
-      );
-    });
+  const titleMatches = queryTerms.filter(
+    (term) => title.includes(term)
+  );
 
-  const uniqueMatches = [
-    ...new Set(matchedTerms),
-  ].slice(0, 5);
+  const abstractMatches = queryTerms.filter(
+    (term) =>
+      !title.includes(term) &&
+      abstract.includes(term)
+  );
 
-  if (uniqueMatches.length >= 4) {
-    return `Shares several key research concepts with your paper, including ${uniqueMatches.join(
+  const uniqueTitleMatches = [
+    ...new Set(titleMatches),
+  ].slice(0, 3);
+
+  const uniqueAbstractMatches = [
+    ...new Set(abstractMatches),
+  ].slice(0, 3);
+
+  if (uniqueTitleMatches.length >= 3) {
+    return `Directly related to your research, with a similar focus on ${uniqueTitleMatches.join(
       ", "
     )}.`;
   }
 
-  if (uniqueMatches.length === 3) {
-    return `Overlaps with your paper in ${uniqueMatches.join(
+  if (uniqueTitleMatches.length === 2) {
+    return `Closely related through its focus on ${uniqueTitleMatches[0]} and ${uniqueTitleMatches[1]}.`;
+  }
+
+  if (uniqueTitleMatches.length === 1) {
+    if (uniqueAbstractMatches.length > 0) {
+      return `Shares a direct focus on ${uniqueTitleMatches[0]}, with additional overlap in ${uniqueAbstractMatches[0]}.`;
+    }
+
+    return `Shares a direct research focus on ${uniqueTitleMatches[0]}.`;
+  }
+
+  if (uniqueAbstractMatches.length >= 3) {
+    return `Related through several research concepts, including ${uniqueAbstractMatches.join(
       ", "
     )}.`;
   }
 
-  if (uniqueMatches.length === 2) {
-    return `Shares research concepts around ${uniqueMatches[0]} and ${uniqueMatches[1]}.`;
+  if (uniqueAbstractMatches.length === 2) {
+    return `Related through shared concepts around ${uniqueAbstractMatches[0]} and ${uniqueAbstractMatches[1]}.`;
   }
 
-  if (uniqueMatches.length === 1) {
-    return `Shares the research concept of ${uniqueMatches[0]} with your paper.`;
+  if (uniqueAbstractMatches.length === 1) {
+    return `Related through its research focus on ${uniqueAbstractMatches[0]}.`;
   }
 
-  return "Selected because its title and abstract contain concepts related to the extracted research focus.";
+  return "Selected as related literature based on the research topic and concepts extracted from your paper.";
 }
 
 function getAuthors(
@@ -1379,7 +1397,7 @@ export default function PaperDetailPage() {
                             key={`${normalizeTitle(
                               title
                             )}-${index}`}
-                            className="flex min-w-[350px] max-w-[350px] shrink-0 flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+                            className="flex min-h-[400px] min-w-[350px] max-w-[350px] shrink-0 flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md"
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm">
@@ -1447,10 +1465,12 @@ export default function PaperDetailPage() {
                                   href={url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700"
+                                  className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
                                 >
-                                  Read paper
-                                  <ExternalLink className="h-4 w-4" />
+                                  <span className="text-white">
+                                    Read paper
+                                  </span>
+                                  <ExternalLink className="h-4 w-4 text-white" />
                                 </a>
                               ) : (
                                 <div className="rounded-xl bg-slate-200 px-4 py-2.5 text-center text-sm text-slate-500">
