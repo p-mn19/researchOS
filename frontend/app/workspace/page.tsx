@@ -7,7 +7,6 @@ import {
   AlertCircle,
   Check,
   ChevronDown,
-  CircleAlert,
   Code2,
   Copy,
   Download,
@@ -32,7 +31,6 @@ import type {
   ResearchIdea,
   Workspace,
   WorkspaceContentType,
-  WorkspaceGenerationMode,
   WorkspaceGenerationResponse,
 } from "@/lib/types";
 
@@ -79,13 +77,13 @@ const contentTypes: Array<{
     value: "related_work",
     label: "Related Work",
     description:
-      "Synthesize the selected evidence corpus with traceable citations.",
+      "Synthesize selected evidence with traceable citations.",
   },
   {
     value: "methodology",
     label: "Proposed Methodology",
     description:
-      "Describe a proposed methodology based on the selected idea and source evidence.",
+      "Describe a proposed methodology based on the selected idea and evidence.",
   },
   {
     value: "proposed_framework",
@@ -140,11 +138,14 @@ function errorMessage(
     const message = error.message;
 
     if (
-      /rate_limit|tokens per minute/i.test(
+      /rate_limit|tokens per minute|status code: 429/i.test(
         message,
       )
     ) {
-      return "Generation is temporarily rate-limited. Wait about a minute, then retry. Your workspace is unchanged.";
+      return (
+        "Generation is temporarily rate-limited. Wait about a minute, " +
+        "then retry. Your workspace has not been changed."
+      );
     }
 
     return message;
@@ -255,9 +256,12 @@ function wordCount(text: string): number {
 export default function WorkspacePage() {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [savedIdeas, setSavedIdeas] = useState<ResearchIdea[]>([]);
+  const [savedIdeas, setSavedIdeas] =
+    useState<ResearchIdea[]>([]);
 
-  const [selectedPaperIds, setSelectedPaperIds] = useState<string[]>([]);
+  const [selectedPaperIds, setSelectedPaperIds] =
+    useState<string[]>([]);
+
   const [selectedIdea, setSelectedIdea] =
     useState<ResearchIdea | null>(null);
 
@@ -273,27 +277,24 @@ export default function WorkspacePage() {
   const [researchObjective, setResearchObjective] =
     useState("");
 
-  const [generationMode, setGenerationMode] =
-    useState<WorkspaceGenerationMode>("section");
-
   const [contentType, setContentType] =
     useState<WorkspaceContentType>("related_work");
 
-  const [targetWords, setTargetWords] = useState(600);
+  const [targetWords, setTargetWords] =
+    useState(500);
 
   const [instructions, setInstructions] =
     useState("");
 
   const [generation, setGeneration] =
-    useState<WorkspaceGenerationResponse | null>(null);
+    useState<WorkspaceGenerationResponse | null>(
+      null,
+    );
 
   const [contentMarkdown, setContentMarkdown] =
     useState("");
 
   const [latexCode, setLatexCode] =
-    useState("");
-
-  const [bibtex, setBibtex] =
     useState("");
 
   const [loading, setLoading] = useState(true);
@@ -328,22 +329,6 @@ export default function WorkspacePage() {
   const generatedWordCount = useMemo(
     () => wordCount(contentMarkdown),
     [contentMarkdown],
-  );
-
-
-  const generatedSections = useMemo(
-    () => generation?.sections || [],
-    [generation],
-  );
-
-
-  const successfulSectionCount = useMemo(
-    () =>
-      generatedSections.filter(
-        (section) =>
-          section.status === "generated",
-      ).length,
-    [generatedSections],
   );
 
 
@@ -392,7 +377,6 @@ export default function WorkspacePage() {
     setGeneration(null);
     setContentMarkdown("");
     setLatexCode("");
-    setBibtex("");
   }
 
 
@@ -435,21 +419,6 @@ export default function WorkspacePage() {
   }
 
 
-  function changeGenerationMode(
-    mode: WorkspaceGenerationMode,
-  ) {
-    setGenerationMode(mode);
-
-    setTargetWords(
-      mode === "full_paper"
-        ? 3500
-        : 600,
-    );
-
-    resetGeneratedOutput();
-  }
-
-
   async function handleCreateWorkspace() {
     if (
       !selectedIdea ||
@@ -486,7 +455,7 @@ export default function WorkspacePage() {
       resetGeneratedOutput();
 
       setNotice(
-        "Workspace created. You can now generate one section or a complete research-paper draft.",
+        "Workspace created. You can now generate a research section.",
       );
     } catch (err) {
       setError(
@@ -513,69 +482,28 @@ export default function WorkspacePage() {
       resetGeneratedOutput();
 
       const result =
-        generationMode === "full_paper"
-          ? await generateWorkspaceContent(
-              workspace.id,
-              {
-                generation_mode: "full_paper",
-                target_word_count: targetWords,
-                generate_latex: true,
-                generate_bibtex: true,
-                citation_style: "internal",
-                instructions:
-                  instructions.trim(),
-              },
-            )
-          : await generateWorkspaceContent(
-              workspace.id,
-              {
-                generation_mode: "section",
-                content_type: contentType,
-                target_word_count: targetWords,
-                generate_latex: true,
-                generate_bibtex: true,
-                citation_style: "internal",
-                instructions:
-                  instructions.trim(),
-              },
-            );
+        await generateWorkspaceContent(
+          workspace.id,
+          {
+            content_type: contentType,
+            target_word_count: targetWords,
+            generate_latex: true,
+            citation_style: "internal",
+            instructions: instructions.trim(),
+          },
+        );
 
       setGeneration(result);
 
-      if (result.generation_mode === "full_paper") {
-        setContentMarkdown(
-          result.full_paper_markdown ||
-            result.content_markdown,
-        );
+      setContentMarkdown(
+        result.content_markdown,
+      );
 
-        setLatexCode(
-          result.full_paper_latex ||
-            result.latex_code,
-        );
+      setLatexCode(result.latex_code);
 
-        setBibtex(result.bibtex || "");
-
-        const completed =
-          result.sections.filter(
-            (section) =>
-              section.status === "generated",
-          ).length;
-
-        setNotice(
-          `Full-paper generation completed. ${completed} of ${result.sections.length} sections were generated.`,
-        );
-      } else {
-        setContentMarkdown(
-          result.content_markdown,
-        );
-
-        setLatexCode(result.latex_code);
-        setBibtex(result.bibtex || "");
-
-        setNotice(
-          "Section content and LaTeX were generated from the selected workspace evidence.",
-        );
-      }
+      setNotice(
+        "Section content and LaTeX were generated from the selected workspace evidence.",
+      );
     } catch (err) {
       setError(
         errorMessage(
@@ -602,39 +530,13 @@ export default function WorkspacePage() {
       const saved = await saveWorkspaceVersion(
         workspace.id,
         {
-          generation_mode:
-            generation.generation_mode,
-
-          content_type:
-            generation.generation_mode ===
-            "section"
-              ? generation.content_type
-              : null,
-
+          content_type: generation.content_type,
           content_markdown: contentMarkdown,
           latex_code: latexCode,
-
           citations: generation.citations,
           warnings: generation.warnings,
           source_chunk_ids:
             generation.source_chunk_ids,
-
-          outline: generation.outline || null,
-          sections: generation.sections || [],
-
-          full_paper_markdown:
-            generation.generation_mode ===
-            "full_paper"
-              ? contentMarkdown
-              : "",
-
-          full_paper_latex:
-            generation.generation_mode ===
-            "full_paper"
-              ? latexCode
-              : "",
-
-          bibtex,
         },
       );
 
@@ -654,104 +556,16 @@ export default function WorkspacePage() {
   }
 
 
-  async function retrySection(
-    sectionKey: string,
-  ) {
-    if (!workspace || generating) {
-      return;
-    }
-
-    const retryTypeBySection: Record<
-      string,
-      WorkspaceContentType
-    > = {
-      abstract: "abstract_draft",
-      proposed_methodology: "methodology",
-      introduction: "introduction",
-      conclusion: "conclusion",
-    };
-
-    const mappedType =
-      retryTypeBySection[sectionKey] ||
-      (sectionKey as WorkspaceContentType);
-
-    const matchingContentType =
-      contentTypes.find(
-        (item) =>
-          item.value === mappedType,
-      )?.value;
-
-    if (!matchingContentType) {
-      setNotice(
-        `The ${sectionKey} section cannot be retried individually yet. Generate the full paper again to regenerate it.`,
-      );
-      return;
-    }
-
-    try {
-      setGenerating(true);
-      setError("");
-      setNotice(
-        `Regenerating ${sectionKey.replaceAll("_", " ")}...`,
-      );
-
-      const result =
-        await generateWorkspaceContent(
-          workspace.id,
-          {
-            generation_mode: "section",
-            content_type: matchingContentType,
-            target_word_count: 500,
-            generate_latex: true,
-            generate_bibtex: true,
-            citation_style: "internal",
-            instructions:
-              instructions.trim(),
-          },
-        );
-
-      setContentMarkdown(
-        result.content_markdown,
-      );
-      setLatexCode(result.latex_code);
-      setBibtex(result.bibtex || "");
-
-      setGeneration(result);
-
-      setGenerationMode("section");
-      setContentType(matchingContentType);
-
-      setNotice(
-        `Generated the ${result.title} section. It is now available in the editor below.`,
-      );
-    } catch (err) {
-      setError(
-        errorMessage(
-          err,
-          `Could not regenerate ${sectionKey}.`,
-        ),
-      );
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-
   function openExistingWorkspace(item: Workspace) {
     setWorkspace(item);
-
     setWorkspaceTitle(item.title);
-
     setWorkspaceDescription(
       item.description || "",
     );
-
     setResearchObjective(
       item.research_objective || "",
     );
-
     setSelectedPaperIds(item.paper_ids || []);
-
     setSelectedIdea(item.idea);
 
     resetGeneratedOutput();
@@ -785,7 +599,7 @@ export default function WorkspacePage() {
               </h1>
 
               <p className="mt-2 text-sm leading-5 text-slate-600">
-                Build a research workspace from selected papers and a candidate idea. Generate one evidence-grounded section or a complete proposed research-paper draft with Markdown, LaTeX, and BibTeX output.
+                Build a workspace from selected papers and a Module 8 idea. Generate one evidence-grounded research section with editable Markdown and LaTeX output.
               </p>
             </div>
 
@@ -831,7 +645,7 @@ export default function WorkspacePage() {
                   </h2>
 
                   <p className="mt-1 text-sm text-slate-500">
-                    Select the paper corpus and lock a chosen Module 8 research idea into a workspace.
+                    Select the source corpus and lock a selected research idea into the workspace.
                   </p>
                 </div>
 
@@ -876,7 +690,7 @@ export default function WorkspacePage() {
                       </h3>
 
                       <p className="mt-1 text-xs text-slate-500">
-                        These papers form the evidence corpus for generation.
+                        These papers become the evidence corpus for generation.
                       </p>
                     </div>
 
@@ -1003,7 +817,7 @@ export default function WorkspacePage() {
                     </p>
 
                     <p className="mt-1 text-xs leading-5 text-blue-700">
-                      The workspace stores the selected papers and the selected idea as a reproducible evidence snapshot.
+                      The workspace stores selected papers and the selected idea as an evidence snapshot.
                     </p>
                   </div>
                 </div>
@@ -1141,152 +955,61 @@ export default function WorkspacePage() {
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-4 border-b border-slate-100 pb-4">
                   <h2 className="text-xl font-semibold text-slate-900">
-                    3. Choose generation mode
+                    3. Generate a section
                   </h2>
 
                   <p className="mt-1 text-sm text-slate-500">
-                    Generate one focused workspace section or orchestrate a complete proposed research-paper draft section by section.
+                    Choose the section you want to draft from workspace evidence.
                   </p>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      changeGenerationMode(
-                        "section",
-                      )
-                    }
-                    className={`rounded-xl border p-4 text-left transition ${
-                      generationMode === "section"
-                        ? "border-blue-300 bg-blue-50 ring-1 ring-blue-100"
-                        : "border-slate-200 bg-white hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-slate-900">
-                        Generate one section
-                      </h3>
+                <div className="grid gap-4 xl:grid-cols-[1fr_1fr_0.85fr]">
+                  <div>
+                    <label className="text-sm font-medium text-slate-800">
+                      Content type
+                    </label>
 
-                      {generationMode === "section" && (
-                        <Check className="h-5 w-5 text-blue-600" />
-                      )}
+                    <div className="relative mt-2">
+                      <select
+                        value={contentType}
+                        onChange={(event) => {
+                          setContentType(
+                            event.target
+                              .value as WorkspaceContentType,
+                          );
+
+                          resetGeneratedOutput();
+                        }}
+                        className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 pr-10 text-sm text-slate-800 outline-none focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                      >
+                        {contentTypes.map((item) => (
+                          <option
+                            key={item.value}
+                            value={item.value}
+                          >
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      <ChevronDown className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-slate-400" />
                     </div>
 
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Create one selected block such as Related Work, Methodology, Research Questions, or Hypotheses.
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      {selectedContentType?.description}
                     </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      changeGenerationMode(
-                        "full_paper",
-                      )
-                    }
-                    className={`rounded-xl border p-4 text-left transition ${
-                      generationMode === "full_paper"
-                        ? "border-violet-300 bg-violet-50 ring-1 ring-violet-100"
-                        : "border-slate-200 bg-white hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-slate-900">
-                        Generate full research paper
-                      </h3>
-
-                      {generationMode ===
-                        "full_paper" && (
-                        <Check className="h-5 w-5 text-violet-600" />
-                      )}
-                    </div>
-
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Generate a shared outline, then create each pre-experiment section independently before combining Markdown, LaTeX, and BibTeX.
-                    </p>
-                  </button>
-                </div>
-
-                <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_0.85fr]">
-                  {generationMode === "section" ? (
-                    <div>
-                      <label className="text-sm font-medium text-slate-800">
-                        Content type
-                      </label>
-
-                      <div className="relative mt-2">
-                        <select
-                          value={contentType}
-                          onChange={(event) => {
-                            setContentType(
-                              event.target
-                                .value as WorkspaceContentType,
-                            );
-
-                            resetGeneratedOutput();
-                          }}
-                          className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 pr-10 text-sm text-slate-800 outline-none focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                        >
-                          {contentTypes.map((item) => (
-                            <option
-                              key={item.value}
-                              value={item.value}
-                            >
-                              {item.label}
-                            </option>
-                          ))}
-                        </select>
-
-                        <ChevronDown className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-slate-400" />
-                      </div>
-
-                      <p className="mt-2 text-xs leading-5 text-slate-500">
-                        {
-                          selectedContentType?.description
-                        }
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-violet-100 bg-violet-50 p-5">
-                      <p className="text-sm font-semibold text-violet-950">
-                        Full-paper structure
-                      </p>
-
-                      <p className="mt-2 text-xs leading-5 text-violet-800">
-                        Abstract, keywords, introduction, problem statement, objectives, questions, hypotheses, related work, methodology, framework, experimental design, evaluation plan, expected contributions, limitations, and conclusion.
-                      </p>
-
-                      <p className="mt-3 text-xs font-medium text-violet-900">
-                        Results and completed performance claims are intentionally excluded.
-                      </p>
-                    </div>
-                  )}
+                  </div>
 
                   <div>
                     <label className="text-sm font-medium text-slate-800">
-                      {generationMode === "full_paper"
-                        ? `Total target length: ${targetWords} words`
-                        : `Target length: ${targetWords} words`}
+                      Target length: {targetWords} words
                     </label>
 
                     <input
                       type="range"
-                      min={
-                        generationMode === "full_paper"
-                          ? "1800"
-                          : "200"
-                      }
-                      max={
-                        generationMode === "full_paper"
-                          ? "6000"
-                          : "1400"
-                      }
-                      step={
-                        generationMode === "full_paper"
-                          ? "200"
-                          : "100"
-                      }
+                      min="200"
+                      max="1400"
+                      step="100"
                       value={targetWords}
                       onChange={(event) => {
                         setTargetWords(
@@ -1299,17 +1022,8 @@ export default function WorkspacePage() {
                     />
 
                     <div className="mt-2 flex justify-between text-xs text-slate-400">
-                      <span>
-                        {generationMode === "full_paper"
-                          ? "1800"
-                          : "200"}
-                      </span>
-
-                      <span>
-                        {generationMode === "full_paper"
-                          ? "6000"
-                          : "1400"}
-                      </span>
+                      <span>200</span>
+                      <span>1400</span>
                     </div>
                   </div>
 
@@ -1320,11 +1034,7 @@ export default function WorkspacePage() {
                         void handleGenerate()
                       }
                       disabled={generating}
-                      className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:bg-slate-300 ${
-                        generationMode === "full_paper"
-                          ? "bg-violet-600 hover:bg-violet-700"
-                          : "bg-blue-600 hover:bg-blue-700"
-                      }`}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                     >
                       {generating ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1333,14 +1043,8 @@ export default function WorkspacePage() {
                       )}
 
                       {generating
-                        ? generationMode ===
-                          "full_paper"
-                          ? "Generating paper..."
-                          : "Generating section..."
-                        : generationMode ===
-                            "full_paper"
-                          ? "Generate full paper"
-                          : "Generate section"}
+                        ? "Generating..."
+                        : "Generate section"}
                     </button>
                   </div>
                 </div>
@@ -1352,125 +1056,15 @@ export default function WorkspacePage() {
 
                   <textarea
                     value={instructions}
-                    onChange={(event) => {
+                    onChange={(event) =>
                       setInstructions(
                         event.target.value,
-                      );
-                    }}
-                      rows={2}
-                    placeholder="Example: Keep the proposed methodology practical for a final-year engineering project. Explicitly identify where the selected literature provides limited evidence."
+                      )
+                    }
+                    rows={2}
+                    placeholder="Example: Keep the proposed methodology practical for a final-year engineering project and identify evidence limitations."
                     className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800 outline-none focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
                   />
-                </div>
-              </section>
-            )}
-
-            {generation?.generation_mode ===
-              "full_paper" && (
-              <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex flex-col gap-3 border-b border-slate-100 pb-5 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold text-slate-900">
-                      Full-paper generation status
-                    </h2>
-
-                    <p className="mt-1 text-sm text-slate-500">
-                      {successfulSectionCount} of{" "}
-                      {generatedSections.length}{" "}
-                      sections were generated. Failed sections can be retried individually when supported.
-                    </p>
-                  </div>
-
-                  {generation.outline && (
-                    <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700">
-                      Evidence-aware outline
-                    </span>
-                  )}
-                </div>
-
-                {generation.outline && (
-                  <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50 p-5">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
-                      Shared paper outline
-                    </p>
-
-                    <h3 className="mt-2 text-lg font-semibold text-violet-950">
-                      {
-                        generation.outline
-                          .paper_title
-                      }
-                    </h3>
-
-                    {generation.outline.keywords.length >
-                      0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {generation.outline.keywords.map(
-                          (keyword) => (
-                            <span
-                              key={keyword}
-                              className="rounded-full bg-white px-3 py-1 text-xs font-medium text-violet-800"
-                            >
-                              {keyword}
-                            </span>
-                          ),
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="mt-5 space-y-3">
-                  {generatedSections.map(
-                    (section, index) => (
-                      <div
-                        key={`${section.key}-${index}`}
-                        className={`flex flex-col gap-4 rounded-2xl border p-5 sm:flex-row sm:items-start sm:justify-between ${
-                          section.status === "generated"
-                            ? "border-emerald-100 bg-emerald-50"
-                            : "border-red-100 bg-red-50"
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            {section.status ===
-                            "generated" ? (
-                              <Check className="h-4 w-4 text-emerald-700" />
-                            ) : (
-                              <CircleAlert className="h-4 w-4 text-red-700" />
-                            )}
-
-                            <h3 className="font-semibold text-slate-900">
-                              {section.title}
-                            </h3>
-                          </div>
-
-                          <p className="mt-1 text-xs text-slate-600">
-                            {section.status ===
-                            "generated"
-                              ? `${wordCount(section.content_markdown)} words generated`
-                              : section.error ||
-                                "Generation failed for this section."}
-                          </p>
-                        </div>
-
-                        {section.status ===
-                          "failed" && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void retrySection(
-                                section.key,
-                              )
-                            }
-                            disabled={generating}
-                            className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:bg-slate-100"
-                          >
-                            Retry section
-                          </button>
-                        )}
-                      </div>
-                    ),
-                  )}
                 </div>
               </section>
             )}
@@ -1481,14 +1075,11 @@ export default function WorkspacePage() {
                   <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <h2 className="text-xl font-semibold text-slate-900">
-                        {generation.generation_mode ===
-                        "full_paper"
-                          ? "Complete research-paper draft"
-                          : `Generated ${generation.title}`}
+                        Generated {generation.title}
                       </h2>
 
                       <p className="mt-1 text-sm text-slate-500">
-                        Edit the generated research content before saving a version. Current draft:{" "}
+                        Edit the content before saving a version. Current draft:{" "}
                         {generatedWordCount} words.
                       </p>
                     </div>
@@ -1498,14 +1089,9 @@ export default function WorkspacePage() {
                         type="button"
                         onClick={() =>
                           downloadTextFile(
-                            `${downloadBaseName}-${
-                              generation.generation_mode ===
-                              "full_paper"
-                                ? "full-paper"
-                                : generation.title
-                                    .toLowerCase()
-                                    .replace(/\s+/g, "-")
-                            }.md`,
+                            `${downloadBaseName}-${generation.title
+                              .toLowerCase()
+                              .replace(/\s+/g, "-")}.md`,
                             contentMarkdown,
                             "text/markdown;charset=utf-8",
                           )
@@ -1596,17 +1182,11 @@ export default function WorkspacePage() {
                     <div>
                       <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
                         <Code2 className="h-5 w-5" />
-                        {generation.generation_mode ===
-                        "full_paper"
-                          ? "Complete LaTeX document"
-                          : "LaTeX code"}
+                        LaTeX code
                       </h2>
 
                       <p className="mt-1 text-sm text-slate-500">
-                        {generation.generation_mode ===
-                        "full_paper"
-                          ? "This source includes document structure, generated sections, and a bibliography reference to references.bib."
-                          : "This LaTeX section is generated from the same content and citation mapping."}
+                        Generated from the same content draft and citation mapping.
                       </p>
                     </div>
 
@@ -1626,12 +1206,9 @@ export default function WorkspacePage() {
                         type="button"
                         onClick={() =>
                           downloadTextFile(
-                            `${downloadBaseName}-${
-                              generation.generation_mode ===
-                              "full_paper"
-                                ? "full-paper"
-                                : "section"
-                            }.tex`,
+                            `${downloadBaseName}-${generation.title
+                              .toLowerCase()
+                              .replace(/\s+/g, "-")}.tex`,
                             latexCode,
                             "application/x-tex;charset=utf-8",
                           )
@@ -1651,93 +1228,11 @@ export default function WorkspacePage() {
                     }
                     rows={20}
                     spellCheck={false}
-                    className="mt-4 w-full resize-y rounded-xl border border-slate-200 bg-slate-950 px-3 py-3 font-mono text-sm leading-6 text-emerald-200 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                    className="mt-5 w-full resize-y rounded-xl border border-slate-200 bg-slate-950 px-3 py-3 font-mono text-sm leading-6 text-emerald-200 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
                   />
                 </section>
 
-                {generation.generation_mode ===
-                  "full_paper" && (
-                  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="flex flex-col gap-3 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h2 className="text-xl font-semibold text-slate-900">
-                          BibTeX references
-                        </h2>
-
-                        <p className="mt-1 text-sm text-slate-500">
-                          Save this as <code>references.bib</code> in the same directory as the LaTeX file.
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            copyText(bibtex)
-                          }
-                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                        >
-                          <Copy className="h-4 w-4" />
-                          Copy BibTeX
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            downloadTextFile(
-                              "references.bib",
-                              bibtex,
-                              "application/x-bibtex;charset=utf-8",
-                            )
-                          }
-                          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
-                        >
-                          <Download className="h-4 w-4" />
-                          Download .bib
-                        </button>
-                      </div>
-                    </div>
-
-                    <textarea
-                      value={bibtex}
-                      onChange={(event) =>
-                        setBibtex(event.target.value)
-                      }
-                      rows={14}
-                      spellCheck={false}
-                      className="mt-4 w-full resize-y rounded-xl border border-slate-200 bg-slate-950 px-3 py-3 font-mono text-sm leading-6 text-amber-200 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                    />
-                  </section>
-                )}
-
-                {generation.warnings.length > 0 && (
-                  <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle className="h-5 w-5 text-amber-700" />
-
-                      <h2 className="text-lg font-semibold text-amber-950">
-                        Generation warnings
-                      </h2>
-                    </div>
-
-                    <details className="mt-2 text-sm leading-5 text-amber-900">
-                      <summary className="cursor-pointer font-medium">
-                        {generation.warnings.length} item{generation.warnings.length === 1 ? "" : "s"} need attention
-                      </summary>
-                      <ol className="mt-2 list-decimal space-y-1 pl-5">
-                        {generation.warnings.map(
-                          (warning, index) => (
-                            <li key={`${warning}-${index}`}>
-                              {warning}
-                            </li>
-                          ),
-                        )}
-                      </ol>
-                    </details>
-                  </section>
-                )}
-
-                <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="mb-5 flex items-center gap-2">
                     <FileText className="h-5 w-5 text-slate-700" />
 

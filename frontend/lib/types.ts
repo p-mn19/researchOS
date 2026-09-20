@@ -253,29 +253,6 @@ export type WorkspaceContentType =
   | "conclusion";
 
 
-export type WorkspaceGenerationMode =
-  | "section"
-  | "full_paper";
-
-
-export type WorkspacePaperSectionKey =
-  | "abstract"
-  | "keywords"
-  | "introduction"
-  | "research_problem"
-  | "research_objectives"
-  | "research_questions"
-  | "hypotheses"
-  | "related_work"
-  | "proposed_methodology"
-  | "proposed_framework"
-  | "experimental_design"
-  | "evaluation_plan"
-  | "expected_contributions"
-  | "limitations_and_scope"
-  | "conclusion";
-
-
 export type WorkspaceIdea = ResearchIdea;
 
 
@@ -304,47 +281,9 @@ export interface WorkspaceCitation {
 }
 
 
-export interface FullPaperSectionPlan {
-  key: WorkspacePaperSectionKey;
-  title: string;
-  purpose: string;
-  target_word_count: number;
-  evidence_paper_ids: string[];
-}
-
-
-export interface FullPaperOutline {
-  paper_title: string;
-  abstract_target_word_count: number;
-  keywords: string[];
-  sections: FullPaperSectionPlan[];
-  model: string;
-}
-
-
-export interface WorkspaceSectionResult {
-  key: WorkspacePaperSectionKey;
-  title: string;
-  content_markdown: string;
-  latex_code: string;
-  citations: WorkspaceCitation[];
-  warnings: string[];
-  source_chunk_ids: string[];
-  status: "generated" | "failed";
-  error?: string | null;
-}
-
-
 export interface WorkspaceGenerationResponse {
   workspace_id: string;
-
-  generation_mode: WorkspaceGenerationMode;
-
-  /*
-   * Present for generation_mode = "section".
-   * null/undefined for generation_mode = "full_paper".
-   */
-  content_type?: WorkspaceContentType | null;
+  content_type: WorkspaceContentType;
 
   title: string;
   content_markdown: string;
@@ -355,13 +294,6 @@ export interface WorkspaceGenerationResponse {
   source_chunk_ids: string[];
   model: string;
 
-  /*
-   * Full-paper-specific response fields.
-   */
-  outline?: FullPaperOutline | null;
-  sections: WorkspaceSectionResult[];
-  full_paper_markdown: string;
-  full_paper_latex: string;
   bibtex: string;
 }
 
@@ -370,8 +302,7 @@ export interface WorkspaceVersion {
   id: string;
   workspace_id: string;
 
-  generation_mode: WorkspaceGenerationMode;
-  content_type?: WorkspaceContentType | null;
+  content_type: WorkspaceContentType;
 
   content_markdown: string;
   latex_code: string;
@@ -380,10 +311,6 @@ export interface WorkspaceVersion {
   warnings: string[];
   source_chunk_ids: string[];
 
-  outline?: FullPaperOutline | null;
-  sections: WorkspaceSectionResult[];
-  full_paper_markdown: string;
-  full_paper_latex: string;
   bibtex: string;
 
   version: number;

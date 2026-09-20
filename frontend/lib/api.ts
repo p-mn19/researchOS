@@ -3,7 +3,6 @@ import type {
   CompareRow,
   DraftSectionResponse,
   Extraction,
-  FullPaperOutline,
   IdeationResponse,
   Paper,
   PaperAnswer,
@@ -16,9 +15,7 @@ import type {
   Workspace,
   WorkspaceCitation,
   WorkspaceContentType,
-  WorkspaceGenerationMode,
   WorkspaceGenerationResponse,
-  WorkspaceSectionResult,
   WorkspaceVersion,
 } from "./types";
 
@@ -373,8 +370,6 @@ export const updateWorkspace = (
 
 
 export type GenerateWorkspaceSectionInput = {
-  generation_mode: "section";
-
   content_type: WorkspaceContentType;
 
   target_word_count?: number;
@@ -386,25 +381,8 @@ export type GenerateWorkspaceSectionInput = {
 };
 
 
-export type GenerateWorkspaceFullPaperInput = {
-  generation_mode: "full_paper";
-
-  /*
-   * content_type is intentionally omitted in full-paper mode.
-   * The backend orchestrates all full-paper sections.
-   */
-  target_word_count?: number;
-  generate_latex?: boolean;
-  generate_bibtex?: boolean;
-
-  citation_style?: "internal" | "latex";
-  instructions?: string;
-};
-
-
 export type GenerateWorkspaceContentInput =
-  | GenerateWorkspaceSectionInput
-  | GenerateWorkspaceFullPaperInput;
+  GenerateWorkspaceSectionInput;
 
 
 export const generateWorkspaceContent = (
@@ -426,8 +404,7 @@ export const generateWorkspaceContent = (
 export const saveWorkspaceVersion = (
   workspaceId: string,
   data: {
-    generation_mode: WorkspaceGenerationMode;
-    content_type?: WorkspaceContentType | null;
+    content_type: WorkspaceContentType;
 
     content_markdown: string;
     latex_code: string;
@@ -436,10 +413,6 @@ export const saveWorkspaceVersion = (
     warnings?: string[];
     source_chunk_ids?: string[];
 
-    outline?: FullPaperOutline | null;
-    sections?: WorkspaceSectionResult[];
-    full_paper_markdown?: string;
-    full_paper_latex?: string;
     bibtex?: string;
   },
 ): Promise<WorkspaceVersion> =>
