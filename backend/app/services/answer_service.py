@@ -1,20 +1,9 @@
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
-from groq import Groq
-
 from app.config import settings
+from app.services.groq_client import get_groq_client, has_groq_api_keys
 
-
-client = None
-
-if settings.GROQ_API_KEY.strip():
-    client = Groq(
-        api_key=settings.GROQ_API_KEY.strip(),
-        base_url="https://api.groq.com",
-        timeout=60.0,
-        max_retries=2,
-    )
 
 SYSTEM_PROMPT = """
 You are ResearchOS, an academic research assistant.
@@ -154,11 +143,11 @@ def generate_grounded_answer(
             "model": settings.GROQ_MODEL,
         }
 
-    if client is None:
+    if not has_groq_api_keys():
         raise HTTPException(
             status_code=500,
             detail=(
-                "GROQ_API_KEY is missing. Add it "
+                "GROQ_API_KEY or GROQ_API_KEYS is missing. Add it "
                 "to backend/.env and restart the "
                 "backend."
             ),
@@ -178,6 +167,8 @@ Use only the supplied passages.
 """.strip()
 
     try:
+        client = get_groq_client()
+        assert client is not None
         completion = client.chat.completions.create(
             model=settings.GROQ_MODEL,
             temperature=0.2,

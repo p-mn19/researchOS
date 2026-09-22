@@ -5,9 +5,8 @@ from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
 from fastapi import HTTPException
-from groq import Groq
-
 from app.config import settings
+from app.services.groq_client import get_groq_client, has_groq_api_keys
 from app.db import (
     extractions_collection,
     papers_collection,
@@ -29,21 +28,6 @@ FIELDS = [
     "findings",
     "keywords",
 ]
-
-
-# =========================================================
-# GROQ CLIENT
-# =========================================================
-
-client = None
-
-if settings.GROQ_API_KEY.strip():
-    client = Groq(
-        api_key=settings.GROQ_API_KEY.strip(),
-        base_url="https://api.groq.com",
-        timeout=60.0,
-        max_retries=2,
-    )
 
 
 # =========================================================
@@ -711,12 +695,12 @@ def _extract_group(
     group_name: str,
 ) -> Dict[str, Any]:
 
-    if client is None:
+    if not has_groq_api_keys():
 
         raise HTTPException(
             status_code=500,
             detail=(
-                "GROQ_API_KEY is missing. "
+                "GROQ_API_KEY or GROQ_API_KEYS is missing. "
                 "Add it to backend/.env and "
                 "restart the backend."
             ),
@@ -812,8 +796,21 @@ Return JSON only.
         "=" * 60
     )
 
+    messages = [
+        {
+            "role": "system",
+            "content": SYSTEM_PROMPT,
+        },
+        {
+            "role": "user",
+            "content": prompt,
+        },
+    ]
+
     try:
 
+        client = get_groq_client()
+        assert client is not None
         completion = client.chat.completions.create(
 
             model=settings.GROQ_MODEL,
@@ -826,36 +823,63 @@ Return JSON only.
                 "type": "json_object",
             },
 
-            messages=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT,
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-            ],
+            messages=messages,
         )
 
     except Exception as exc:
 
-        error_text = str(exc)
+        # Some models occasionally produce JSON that Groq's response-format
+        # validator rejects before it can be returned. The prompt still
+        # requires JSON, and _parse_json below safely handles the response.
+        if "json_validate_failed" in str(exc):
 
-        print(
-            "[Extraction ERROR]"
-            f" Group={group_name}"
-            f" | Error={error_text}"
-        )
+            print(
+                "[Extraction]"
+                f" Retrying group={group_name}"
+                " without provider JSON validation"
+            )
 
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Structured extraction failed "
-                f"for group '{group_name}': "
-                f"{error_text}"
-            ),
-        ) from exc
+            try:
+
+                client = get_groq_client()
+                assert client is not None
+                completion = client.chat.completions.create(
+
+                    model=settings.GROQ_MODEL,
+
+                    temperature=0,
+
+                    max_tokens=max_tokens,
+
+                    messages=messages,
+                )
+
+            except Exception as retry_exc:
+
+                exc = retry_exc
+
+            else:
+
+                exc = None
+
+        if exc is not None:
+
+            error_text = str(exc)
+
+            print(
+                "[Extraction ERROR]"
+                f" Group={group_name}"
+                f" | Error={error_text}"
+            )
+
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Structured extraction failed "
+                    f"for group '{group_name}': "
+                    f"{error_text}"
+                ),
+            ) from exc
 
     if not completion.choices:
 

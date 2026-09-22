@@ -40,9 +40,26 @@ class Settings(BaseSettings):
     VECTOR_DIR: str = str(DEFAULT_VECTOR_DIR)
 
     GROQ_API_KEY: str = ""
+    # Comma-separated list used for round-robin request distribution.  The
+    # singular key remains supported so existing deployments keep working.
+    GROQ_API_KEYS: str = ""
     GROQ_MODEL: str = (
         "openai/gpt-oss-20b"
     )
+
+    @property
+    def groq_api_keys(self) -> tuple[str, ...]:
+        """Return configured Groq keys in their configured rotation order."""
+        raw_keys = self.GROQ_API_KEYS.replace("\n", ",").replace(";", ",")
+        keys = [key.strip() for key in raw_keys.split(",") if key.strip()]
+
+        # GROQ_API_KEYS takes precedence. GROQ_API_KEY is the legacy fallback.
+        if not keys and self.GROQ_API_KEY.strip():
+            keys = [self.GROQ_API_KEY.strip()]
+
+        # Avoid accidentally spending the same key twice when copied into both
+        # environment variables, while preserving the supplied order.
+        return tuple(dict.fromkeys(keys))
 
     model_config = SettingsConfigDict(
         env_file=".env",

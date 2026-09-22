@@ -1,21 +1,14 @@
-from groq import Groq
-
 from app.config import settings
+from app.services.groq_client import get_groq_client
 
 
-api_key = settings.GROQ_API_KEY.strip()
-
-if not api_key:
+if not settings.groq_api_keys:
     raise RuntimeError(
-        "GROQ_API_KEY was not loaded from backend/.env"
+        "GROQ_API_KEY or GROQ_API_KEYS was not loaded from backend/.env"
     )
 
-client = Groq(
-    api_key=api_key,
-    base_url="https://api.groq.com",
-    timeout=30.0,
-    max_retries=2,
-)
+client = get_groq_client(timeout=30.0, max_retries=2)
+assert client is not None
 
 try:
     models = client.models.list()

@@ -4,9 +4,8 @@ from typing import Any, Dict, List
 
 from bson import ObjectId
 from fastapi import HTTPException
-from groq import Groq
-
 from app.config import settings
+from app.services.groq_client import get_groq_client, has_groq_api_keys
 from app.db import extractions_collection, papers_collection
 from app.schemas.manuscript import (
     CitationSource,
@@ -18,16 +17,6 @@ from app.schemas.manuscript import (
 )
 from app.services.search_service import semantic_search
 
-
-client = None
-
-if settings.GROQ_API_KEY.strip():
-    client = Groq(
-    api_key=settings.GROQ_API_KEY.strip(),
-    base_url="https://api.groq.com",
-    timeout=60.0,
-    max_retries=2,
-)
 
 PLAN_SYSTEM_PROMPT = """
 You are ResearchOS Module 9: a citation-grounded academic manuscript planning assistant.
@@ -323,10 +312,10 @@ def _citation_sources(
 def generate_section_plan(
     request: SectionPlanRequest,
 ) -> SectionPlanResponse:
-    if client is None:
+    if not has_groq_api_keys():
         raise HTTPException(
             status_code=500,
-            detail="GROQ_API_KEY is missing.",
+            detail="GROQ_API_KEY or GROQ_API_KEYS is missing.",
         )
 
     paper_ids = list(
@@ -370,6 +359,8 @@ PAPER EVIDENCE:
 """.strip()
 
     try:
+        client = get_groq_client()
+        assert client is not None
         completion = client.chat.completions.create(
             model=settings.GROQ_MODEL,
             temperature=0.25,
@@ -411,7 +402,9 @@ array whose items each contain `sentence_number`, `purpose`, `claim`, and
 """.strip()
 
         try:
-            retry_completion = client.chat.completions.create(
+            retry_client = get_groq_client()
+            assert retry_client is not None
+            retry_completion = retry_client.chat.completions.create(
                 model=settings.GROQ_MODEL,
                 temperature=0.1,
                 max_tokens=2200,
@@ -585,10 +578,10 @@ def _plan_as_editable_draft(
 def generate_draft_section(
     request: DraftSectionRequest,
 ) -> DraftSectionResponse:
-    if client is None:
+    if not has_groq_api_keys():
         raise HTTPException(
             status_code=500,
-            detail="GROQ_API_KEY is missing.",
+            detail="GROQ_API_KEY or GROQ_API_KEYS is missing.",
         )
 
     paper_ids = list(
@@ -641,6 +634,8 @@ Only use paper IDs from the evidence above.
 """.strip()
 
     try:
+        client = get_groq_client()
+        assert client is not None
         completion = client.chat.completions.create(
             model=settings.GROQ_MODEL,
             temperature=0.2,

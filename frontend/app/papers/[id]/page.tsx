@@ -11,6 +11,8 @@ import {
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
+  ChevronLeft,
+  ChevronRight,
   ArrowLeftCircle,
   Database,
   ExternalLink,

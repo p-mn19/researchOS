@@ -7,9 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from bson import ObjectId
 from fastapi import HTTPException
-from groq import Groq
-
 from app.config import settings
+from app.services.groq_client import get_groq_client, has_groq_api_keys
 from app.db import (
     extractions_collection,
     papers_collection,
@@ -27,17 +26,6 @@ from app.schemas.workspace import (
     WorkspaceVersionResponse,
 )
 from app.services.search_service import semantic_search
-
-
-client = None
-
-if settings.GROQ_API_KEY.strip():
-    client = Groq(
-        api_key=settings.GROQ_API_KEY.strip(),
-        base_url="https://api.groq.com",
-        timeout=90.0,
-        max_retries=1,
-    )
 
 
 CONTENT_TITLES = {
@@ -95,10 +83,14 @@ CONTENT_QUERIES = {
     ),
 }
 
-
 MAX_PAPER_CONTEXT_CHARS = 3000
 MAX_CHUNK_CONTEXT_CHARS = 2500
 MAX_INSTRUCTION_CHARS = 600
+
+# Output-token budget for one generated workspace section.
+# This is deliberately separate from the model's own maximum.
+MIN_GENERATION_TOKENS = 1200
+MAX_GENERATION_TOKENS = 8000
 
 
 SYSTEM_PROMPT = """
@@ -120,6 +112,8 @@ Rules:
 10. Use clean academic prose only.
 11. Do not use Markdown code fences.
 12. Do not add a bibliography because source metadata is returned separately.
+13. Complete every sentence and paragraph. Never end the response mid-sentence.
+14. Meet the requested target length as closely as the available evidence permits.
 """.strip()
 
 
@@ -721,8 +715,6 @@ def _retrieve_evidence(
             ),
         )
     except Exception:
-        # Generation can still use structured paper fields
-        # when local chunk retrieval has an implementation issue.
         return []
 
 
@@ -1095,6 +1087,7 @@ Additional instructions:
 Write only the requested section.
 Do not add a bibliography.
 Do not use a Markdown code block.
+Write the complete section before finishing. Do not end with an incomplete sentence, incomplete paragraph, or a dangling transition such as "Consequently,".
 """.strip()
 
 
@@ -1159,11 +1152,11 @@ def _call_groq(
     prompt: str,
     max_tokens: int,
 ) -> str:
-    if client is None:
+    if not has_groq_api_keys():
         raise HTTPException(
             status_code=500,
             detail=(
-                "GROQ_API_KEY is missing. Add it to backend/.env "
+                "GROQ_API_KEY or GROQ_API_KEYS is missing. Add it to backend/.env "
                 "and restart the backend."
             ),
         )
@@ -1172,6 +1165,8 @@ def _call_groq(
 
     for attempt in range(2):
         try:
+            client = get_groq_client(timeout=90.0, max_retries=1)
+            assert client is not None
             completion = client.chat.completions.create(
                 model=settings.GROQ_MODEL,
                 temperature=0.2,
@@ -1196,17 +1191,29 @@ def _call_groq(
                     ),
                 )
 
-            content = (
-                completion.choices[0]
-                .message.content
-                or ""
-            ).strip()
+            choice = completion.choices[0]
+            content = (choice.message.content or "").strip()
+            finish_reason = str(
+                getattr(choice, "finish_reason", "") or ""
+            ).lower()
 
             if not content:
                 raise HTTPException(
                     status_code=502,
                     detail=(
                         "Groq returned an empty generation."
+                    ),
+                )
+
+            if finish_reason == "length":
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "The model reached the requested output-token budget "
+                        f"({max_tokens} tokens) before completing the section. "
+                        "Use a shorter word target, generate the document section "
+                        "by section, or increase MAX_GENERATION_TOKENS if the "
+                        "configured Groq model supports a larger completion."
                     ),
                 )
 
@@ -1286,15 +1293,32 @@ def generate_workspace_content(
         chunks,
     )
 
+    requested_words = max(
+        1,
+        int(request.target_word_count),
+    )
+
+    # Academic prose, citations, and cautious wording can require
+    # substantially more tokens than a basic word-to-token estimate.
+    generation_tokens = min(
+        MAX_GENERATION_TOKENS,
+        max(
+            MIN_GENERATION_TOKENS,
+            int(requested_words * 2.75) + 500,
+        ),
+    )
+
+    print(
+        "[Workspace generation]",
+        {
+            "target_word_count": requested_words,
+            "max_tokens": generation_tokens,
+            "model": settings.GROQ_MODEL,
+        },
+    )
     content_markdown = _call_groq(
         prompt=prompt,
-        max_tokens=min(
-            1400,
-            max(
-                500,
-                int(request.target_word_count * 1.35),
-            ),
-        ),
+        max_tokens=generation_tokens,
     )
 
     title = CONTENT_TITLES.get(
