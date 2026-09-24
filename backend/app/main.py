@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api.routes import compare, review
 from app.api.routes import ideation, workspaces
-from app.routers import answers, papers, search, discovery
+from app.routers import answers, papers, search, discovery,latex_workspace
 
 
 app = FastAPI(
@@ -35,6 +35,7 @@ app.include_router(review.router)
 # New standalone modules
 app.include_router(ideation.router)
 app.include_router(workspaces.router)
+app.include_router(latex_workspace.router)
 
 @app.get("/")
 def root():

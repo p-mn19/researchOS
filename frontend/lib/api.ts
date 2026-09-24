@@ -31,6 +31,19 @@ export type ExtractionResponse =
     };
 
 
+export type LatexCompileError = {
+  line: number | null;
+  message: string;
+};
+
+
+export type WorkspaceLatexCompileStatusResponse = {
+  success: boolean;
+  log: string;
+  errors: LatexCompileError[];
+};
+
+
 async function api<T>(
   path: string,
   options?: RequestInit,
@@ -63,6 +76,7 @@ async function api<T>(
 /* ============================================================
    Papers
    ============================================================ */
+
 
 export const getPapers = (): Promise<Paper[]> =>
   api<Paper[]>("/papers");
@@ -222,6 +236,7 @@ export const extractPaper = (
    Comparison and Review
    ============================================================ */
 
+
 export const comparePapers = (
   paperIds: string[],
 ): Promise<{
@@ -259,6 +274,7 @@ export const generateReview = (
 /* ============================================================
    Literature Discovery
    ============================================================ */
+
 
 export const searchGlobalLiterature = async (
   query: string,
@@ -298,6 +314,7 @@ export const searchDiscoveryPapers = async (
    Module 8 — Research Gap and Ideation
    ============================================================ */
 
+
 export const analyzeIdeation = (data: {
   paper_ids: string[];
   topic?: string;
@@ -320,6 +337,7 @@ export const analyzeIdeation = (data: {
    These functions can be removed after your old /manuscript
    backend routes are no longer used.
    ============================================================ */
+
 
 export const createSectionPlan = (data: {
   paper_ids: string[];
@@ -365,6 +383,7 @@ export const generateManuscriptSection = (data: {
 /* ============================================================
    Module 9 — Research Workspace
    ============================================================ */
+
 
 export const createWorkspace = (data: {
   title: string;
@@ -474,3 +493,97 @@ export const getWorkspaceVersions = (
   api<WorkspaceVersion[]>(
     `/workspaces/${workspaceId}/versions`,
   );
+
+
+/* ============================================================
+   Module 9 — LaTeX Workspace
+   ============================================================ */
+
+
+export async function compileWorkspaceLatexStatus(
+  workspaceId: string,
+  latexCode: string,
+  referencesBib = "",
+): Promise<WorkspaceLatexCompileStatusResponse> {
+  const response = await fetch(
+    `${API_BASE}/workspaces/${workspaceId}/latex/compile/status`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        latex_code: latexCode,
+        references_bib: referencesBib,
+      }),
+      cache: "no-store",
+    },
+  );
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const detail = data?.detail;
+
+    if (typeof detail === "string") {
+      throw new Error(detail);
+    }
+
+    if (
+      detail &&
+      typeof detail === "object" &&
+      typeof detail.message === "string"
+    ) {
+      throw new Error(detail.message);
+    }
+
+    throw new Error(
+      "Unable to check LaTeX compilation status.",
+    );
+  }
+
+  return data as WorkspaceLatexCompileStatusResponse;
+}
+
+
+export async function compileWorkspaceLatexPdf(
+  workspaceId: string,
+  latexCode: string,
+  referencesBib = "",
+): Promise<Blob> {
+  const response = await fetch(
+    `${API_BASE}/workspaces/${workspaceId}/latex/compile`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        latex_code: latexCode,
+        references_bib: referencesBib,
+      }),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    const detail = data?.detail;
+
+    if (
+      detail &&
+      typeof detail === "object" &&
+      typeof detail.message === "string"
+    ) {
+      throw new Error(detail.message);
+    }
+
+    if (typeof detail === "string") {
+      throw new Error(detail);
+    }
+
+    throw new Error("LaTeX compilation failed.");
+  }
+
+  return response.blob();
+}

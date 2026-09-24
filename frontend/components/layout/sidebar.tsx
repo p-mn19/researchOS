@@ -6,6 +6,7 @@ import clsx from "clsx";
 import {
   ClipboardCheck,
   FileCode2,
+  FileText,
   FlaskConical,
   GitCompareArrows,
   LayoutDashboard,
@@ -45,6 +46,11 @@ const items = [
     label: "Research Workspace",
     icon: FileCode2,
   },
+  {
+    href: "/latex-workspace",
+    label: "LaTeX Workspace",
+    icon: FileText,
+  },
 ];
 
 
@@ -75,7 +81,9 @@ export function Sidebar() {
 
           const active =
             pathname === item.href ||
-            pathname.startsWith(`${item.href}/`);
+            pathname.startsWith(`${item.href}/`) ||
+            (item.href === "/latex-workspace" &&
+              /^\/workspace\/[^/]+\/latex$/.test(pathname));
 
           return (
             <Link

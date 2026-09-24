@@ -3,6 +3,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
   Check,
@@ -23,6 +24,7 @@ import {
   createWorkspace,
   generateWorkspaceContent,
   getPapers,
+  getWorkspaceVersions,
   getWorkspaces,
   saveWorkspaceVersion,
 } from "@/lib/api";
@@ -297,6 +299,24 @@ export default function WorkspacePage() {
   const [latexCode, setLatexCode] =
     useState("");
 
+  const [manuscriptMarkdown, setManuscriptMarkdown] =
+    useState("");
+
+  const [manuscriptLatex, setManuscriptLatex] =
+    useState("");
+
+  const [manuscriptCitations, setManuscriptCitations] =
+    useState<WorkspaceGenerationResponse["citations"]>([]);
+
+  const [manuscriptGeneration, setManuscriptGeneration] =
+    useState<WorkspaceGenerationResponse | null>(null);
+
+  const [savedManuscriptVersion, setSavedManuscriptVersion] =
+    useState<number | null>(null);
+
+  const [manuscriptHasUnsavedChanges, setManuscriptHasUnsavedChanges] =
+    useState(false);
+
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -329,6 +349,11 @@ export default function WorkspacePage() {
   const generatedWordCount = useMemo(
     () => wordCount(contentMarkdown),
     [contentMarkdown],
+  );
+
+  const manuscriptSections = useMemo(
+    () => manuscriptSectionCount(manuscriptLatex),
+    [manuscriptLatex],
   );
 
 
@@ -373,10 +398,41 @@ export default function WorkspacePage() {
   }, []);
 
 
-  function resetGeneratedOutput() {
+  function resetCurrentSectionPreview() {
     setGeneration(null);
     setContentMarkdown("");
     setLatexCode("");
+  }
+
+
+  function resetManuscriptDraft() {
+    resetCurrentSectionPreview();
+    setManuscriptMarkdown("");
+    setManuscriptLatex("");
+    setManuscriptCitations([]);
+    setManuscriptGeneration(null);
+    setSavedManuscriptVersion(null);
+    setManuscriptHasUnsavedChanges(false);
+  }
+
+
+  async function loadSavedManuscriptVersion(
+    workspaceId: string,
+  ) {
+    try {
+      const versions = await getWorkspaceVersions(workspaceId);
+      const latestVersion = versions.reduce<number | null>(
+        (latest, version) =>
+          latest === null || version.version > latest
+            ? version.version
+            : latest,
+        null,
+      );
+
+      setSavedManuscriptVersion(latestVersion);
+    } catch {
+      setSavedManuscriptVersion(null);
+    }
   }
 
 
@@ -452,7 +508,7 @@ export default function WorkspacePage() {
         ...current,
       ]);
 
-      resetGeneratedOutput();
+      resetManuscriptDraft();
 
       setNotice(
         "Workspace created. You can now generate a research section.",
@@ -479,7 +535,7 @@ export default function WorkspacePage() {
       setGenerating(true);
       setError("");
       setNotice("");
-      resetGeneratedOutput();
+      resetCurrentSectionPreview();
 
       const result =
         await generateWorkspaceContent(
@@ -493,16 +549,30 @@ export default function WorkspacePage() {
           },
         );
 
+      if (latexSectionExists(manuscriptLatex, result.title)) {
+        setError(
+          `"${result.title}" is already present in the manuscript. Open the LaTeX workspace to edit or replace the existing section.`,
+        );
+        return;
+      }
+
       setGeneration(result);
-
-      setContentMarkdown(
-        result.content_markdown,
-      );
-
+      setManuscriptGeneration(result);
+      setContentMarkdown(result.content_markdown);
       setLatexCode(result.latex_code);
+      setManuscriptMarkdown((current) =>
+        appendSection(current, result.content_markdown),
+      );
+      setManuscriptLatex((current) =>
+        appendSection(current, result.latex_code),
+      );
+      setManuscriptCitations((current) =>
+        mergeCitations(current, result.citations),
+      );
+      setManuscriptHasUnsavedChanges(true);
 
       setNotice(
-        "Section content and LaTeX were generated from the selected workspace evidence.",
+        `"${result.title}" was added to the manuscript. Save the manuscript version to persist the complete draft.`,
       );
     } catch (err) {
       setError(
@@ -518,7 +588,21 @@ export default function WorkspacePage() {
 
 
   async function handleSaveVersion() {
-    if (!workspace || !generation || saving) {
+    const activeWorkspace = workspace;
+    const activeGeneration = manuscriptGeneration;
+
+    if (
+      !activeWorkspace ||
+      !activeGeneration ||
+      saving
+    ) {
+      return;
+    }
+
+    if (!manuscriptMarkdown.trim() && !manuscriptLatex.trim()) {
+      setError(
+        "Add at least one generated section before saving a manuscript version.",
+      );
       return;
     }
 
@@ -528,17 +612,20 @@ export default function WorkspacePage() {
       setNotice("");
 
       const saved = await saveWorkspaceVersion(
-        workspace.id,
+        activeWorkspace.id,
         {
-          content_type: generation.content_type,
-          content_markdown: contentMarkdown,
-          latex_code: latexCode,
-          citations: generation.citations,
-          warnings: generation.warnings,
+          content_type: activeGeneration.content_type,
+          content_markdown: manuscriptMarkdown,
+          latex_code: manuscriptLatex,
+          citations: manuscriptCitations,
+          warnings: activeGeneration.warnings,
           source_chunk_ids:
-            generation.source_chunk_ids,
+            activeGeneration.source_chunk_ids,
         },
       );
+
+      setSavedManuscriptVersion(saved.version);
+      setManuscriptHasUnsavedChanges(false);
 
       setNotice(
         `Workspace version ${saved.version} saved successfully.`,
@@ -568,7 +655,8 @@ export default function WorkspacePage() {
     setSelectedPaperIds(item.paper_ids || []);
     setSelectedIdea(item.idea);
 
-    resetGeneratedOutput();
+    resetManuscriptDraft();
+    void loadSavedManuscriptVersion(item.id);
 
     setNotice(
       `Opened workspace: ${item.title}`,
@@ -581,6 +669,10 @@ export default function WorkspacePage() {
       workspaceTitle ||
       "researchos-workspace",
   );
+
+  const canOpenLatexWorkspace =
+    Boolean(savedManuscriptVersion) &&
+    !manuscriptHasUnsavedChanges;
 
 
   return (
@@ -599,7 +691,7 @@ export default function WorkspacePage() {
               </h1>
 
               <p className="mt-2 text-sm leading-5 text-slate-600">
-                Build a workspace from selected papers and a Module 8 idea. Generate one evidence-grounded research section with editable Markdown and LaTeX output.
+                Build a workspace from selected papers and a Module 8 idea. Generate evidence-grounded sections that accumulate into an editable Markdown and LaTeX manuscript.
               </p>
             </div>
 
@@ -729,7 +821,7 @@ export default function WorkspacePage() {
                               checked={selected}
                               onChange={() => {
                                 togglePaper(paper.id);
-                                resetGeneratedOutput();
+                                resetCurrentSectionPreview();
                               }}
                               className="mt-1 h-4 w-4 accent-blue-600"
                             />
@@ -978,7 +1070,7 @@ export default function WorkspacePage() {
                               .value as WorkspaceContentType,
                           );
 
-                          resetGeneratedOutput();
+                          resetCurrentSectionPreview();
                         }}
                         className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 pr-10 text-sm text-slate-800 outline-none focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
                       >
@@ -1016,7 +1108,6 @@ export default function WorkspacePage() {
                           Number(event.target.value),
                         );
 
-                        resetGeneratedOutput();
                       }}
                       className="mt-5 w-full accent-blue-600"
                     />
@@ -1069,17 +1160,88 @@ export default function WorkspacePage() {
               </section>
             )}
 
+            {workspace && (
+              <section className="rounded-2xl border border-violet-100 bg-violet-50/50 p-5 shadow-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">
+                      Manuscript draft
+                    </h2>
+
+                    <p className="mt-1 text-sm text-slate-600">
+                      {manuscriptSections} {manuscriptSections === 1 ? "section" : "sections"} · {wordCount(manuscriptMarkdown)} words
+                    </p>
+
+                    <p className="mt-2 text-sm text-slate-600">
+                      {manuscriptSections === 0
+                        ? "No sections added yet."
+                        : manuscriptHasUnsavedChanges
+                          ? "Unsaved manuscript changes"
+                          : `Saved as version ${savedManuscriptVersion}`}
+                    </p>
+
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      Each generated section is appended to the manuscript. Save the manuscript before opening the LaTeX workspace.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveVersion()}
+                      disabled={
+                        saving ||
+                        (!manuscriptMarkdown.trim() &&
+                          !manuscriptLatex.trim())
+                      }
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      <Save className="h-4 w-4" />
+                      {saving ? "Saving..." : "Save manuscript version"}
+                    </button>
+
+                    {canOpenLatexWorkspace ? (
+                      <Link
+                        href={`/workspace/${workspace.id}/latex`}
+                        className="inline-flex items-center justify-center rounded-xl bg-violet-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-800"
+                      >
+                        Open LaTeX workspace
+                      </Link>
+                    ) : (
+                      <span className="inline-flex cursor-not-allowed items-center justify-center rounded-xl bg-slate-200 px-4 py-2 text-sm font-medium text-slate-500">
+                        Save manuscript to open LaTeX workspace
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {manuscriptMarkdown && (
+                  <details className="mt-4 rounded-xl border border-violet-100 bg-white p-4">
+                    <summary className="cursor-pointer text-sm font-medium text-slate-800">
+                      Preview combined manuscript
+                    </summary>
+
+                    <div className="prose prose-slate mt-4 max-w-none text-sm leading-6">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {manuscriptMarkdown}
+                      </ReactMarkdown>
+                    </div>
+                  </details>
+                )}
+              </section>
+            )}
+
             {generation && (
               <>
                 <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <h2 className="text-xl font-semibold text-slate-900">
-                        Generated {generation.title}
+                        Most recently generated section: {generation.title}
                       </h2>
 
                       <p className="mt-1 text-sm text-slate-500">
-                        Edit the content before saving a version. Current draft:{" "}
+                        Edit the most recent section preview. Current draft:{" "}
                         {generatedWordCount} words.
                       </p>
                     </div>
@@ -1118,7 +1280,7 @@ export default function WorkspacePage() {
 
                         {saving
                           ? "Saving..."
-                          : "Save version"}
+                          : "Save manuscript version"}
                       </button>
                     </div>
                   </div>
@@ -1231,7 +1393,6 @@ export default function WorkspacePage() {
                     className="mt-5 w-full resize-y rounded-xl border border-slate-200 bg-slate-950 px-3 py-3 font-mono text-sm leading-6 text-emerald-200 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
                   />
                 </section>
-
                 <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="mb-5 flex items-center gap-2">
                     <FileText className="h-5 w-5 text-slate-700" />
@@ -1241,13 +1402,13 @@ export default function WorkspacePage() {
                     </h2>
                   </div>
 
-                  {generation.citations.length === 0 ? (
+                  {manuscriptCitations.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
                       No citation metadata was returned for this generation.
                     </div>
                   ) : (
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                      {generation.citations.map(
+                      {manuscriptCitations.map(
                         (citation) => (
                           <article
                             key={citation.paper_id}
@@ -1312,4 +1473,80 @@ export default function WorkspacePage() {
       </div>
     </AppShell>
   );
+}
+
+
+function normalizeSectionTitle(
+  title: string,
+): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+
+function latexSectionExists(
+  latex: string,
+  sectionTitle: string,
+): boolean {
+  const target = normalizeSectionTitle(sectionTitle);
+  const pattern = /\\section\*?\{([^}]+)\}/g;
+
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(latex)) !== null) {
+    if (normalizeSectionTitle(match[1]) === target) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+function appendSection(
+  existingContent: string,
+  nextSection: string,
+): string {
+  const current = existingContent.trim();
+  const next = nextSection.trim();
+
+  if (!current) {
+    return next;
+  }
+
+  if (!next) {
+    return current;
+  }
+
+  return `${current}\n\n${next}`;
+}
+
+
+function mergeCitations(
+  current: WorkspaceGenerationResponse["citations"],
+  incoming: WorkspaceGenerationResponse["citations"],
+): WorkspaceGenerationResponse["citations"] {
+  const citationsByPaperId = new Map(
+    current.map((citation) => [
+      citation.paper_id,
+      citation,
+    ]),
+  );
+
+  for (const citation of incoming) {
+    citationsByPaperId.set(
+      citation.paper_id,
+      citation,
+    );
+  }
+
+  return Array.from(citationsByPaperId.values());
+}
+
+
+function manuscriptSectionCount(latex: string): number {
+  return (latex.match(/\\section\*?\{[^}]+\}/g) || [])
+    .length;
 }
