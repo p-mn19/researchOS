@@ -15,14 +15,9 @@ import {
 import {
   GitCompareArrows,
   CheckCircle2,
-  ExternalLink,
-  Sparkles,
-  ChevronLeft,
-  ChevronRight,
-  BookOpen,
 } from "lucide-react";
 import { CompareTable } from "@/components/compare/compare_table";
-
+import { RecommendedPapers } from "@/components/papers/recommended_papers";
 
 // =========================================================
 // HELPERS
@@ -38,48 +33,13 @@ function cleanText(value: unknown): string {
     .trim();
 }
 
-
-function getPaperTitle(
-  paper: Paper
-): string {
+function getPaperTitle(paper: Paper): string {
   return (
     cleanText(paper.title) ||
     cleanText(paper.filename) ||
     "Untitled paper"
   );
 }
-
-
-function getPaperAuthors(
-  paper: Paper
-): string {
-  if (!paper.authors?.length) {
-    return "Authors unavailable";
-  }
-
-  const authors = paper.authors
-    .map((author) => cleanText(author))
-    .filter(Boolean);
-
-  if (authors.length <= 3) {
-    return authors.join(", ");
-  }
-
-  return `${authors.slice(0, 3).join(", ")} + ${
-    authors.length - 3
-  } more`;
-}
-
-
-function getPaperUrl(
-  paper: PaperMetadata
-): string | undefined {
-  return (
-    paper.pdf_url ||
-    undefined
-  );
-}
-
 
 // =========================================================
 // QUERY BUILDING
@@ -136,10 +96,7 @@ const STOP_WORDS = new Set([
   "using",
 ]);
 
-
-function tokenize(
-  text: string
-): string[] {
+function tokenize(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
@@ -151,19 +108,14 @@ function tokenize(
     );
 }
 
-
-function unique(
-  values: string[]
-): string[] {
+function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
-
 
 function buildComparisonQuery(
   papers: Paper[],
   rows: CompareRow[]
 ): string {
-
   const terms: string[] = [];
 
   // -------------------------------------------------------
@@ -183,9 +135,7 @@ function buildComparisonQuery(
   // -------------------------------------------------------
 
   for (const paper of papers) {
-
     if (paper.abstract) {
-
       terms.push(
         ...tokenize(
           paper.abstract
@@ -199,9 +149,7 @@ function buildComparisonQuery(
   // -------------------------------------------------------
 
   for (const paper of papers) {
-
     if (paper.methodology) {
-
       terms.push(
         ...tokenize(
           paper.methodology
@@ -210,7 +158,6 @@ function buildComparisonQuery(
     }
 
     if (paper.dataset) {
-
       terms.push(
         ...tokenize(
           paper.dataset
@@ -229,34 +176,22 @@ function buildComparisonQuery(
   // -------------------------------------------------------
 
   for (const row of rows) {
-
     if (
       row.field === "Methodology" ||
       row.field === "Dataset" ||
       row.field === "Evaluation Metric"
     ) {
-
-      for (
-        const value of Object.values(
-          row.values
-        )
-      ) {
-
-        if (
-          typeof value === "string"
-        ) {
-
+      for (const value of Object.values(row.values)) {
+        if (typeof value === "string") {
           terms.push(
-            ...tokenize(value)
-              .slice(0, 12)
+            ...tokenize(value).slice(0, 12)
           );
         }
       }
     }
   }
 
-  const uniqueTerms =
-    unique(terms);
+  const uniqueTerms = unique(terms);
 
   /*
    * Keep the query comfortably below
@@ -267,29 +202,23 @@ function buildComparisonQuery(
    * generally more useful for discovery.
    */
 
-  let query =
-    uniqueTerms.join(" ");
+  let query = uniqueTerms.join(" ");
 
   if (query.length > 280) {
-
-    query =
-      query.slice(0, 280);
+    query = query.slice(0, 280);
 
     /*
      * Avoid cutting a word in half.
      */
-    const lastSpace =
-      query.lastIndexOf(" ");
+    const lastSpace = query.lastIndexOf(" ");
 
     if (lastSpace > 0) {
-      query =
-        query.slice(0, lastSpace);
+      query = query.slice(0, lastSpace);
     }
   }
 
   return query.trim();
 }
-
 
 // =========================================================
 // RECOMMENDATION REASON
@@ -299,71 +228,52 @@ function getRecommendationReason(
   paper: PaperMetadata,
   query: string
 ): string {
+  const title = cleanText(
+    paper.title
+  ).toLowerCase();
 
-  const title =
-    cleanText(
-      paper.title
-    ).toLowerCase();
+  const abstract = cleanText(
+    paper.abstract
+  ).toLowerCase();
 
-  const abstract =
-    cleanText(
-      paper.abstract
-    ).toLowerCase();
+  const queryTerms = unique(
+    tokenize(query)
+  );
 
-  const queryTerms =
-    unique(
-      tokenize(query)
-    );
+  const titleMatches = queryTerms.filter(
+    (term) => title.includes(term)
+  );
 
-  const titleMatches =
-    queryTerms.filter(
-      (term) =>
-        title.includes(term)
-    );
+  const abstractMatches = queryTerms.filter(
+    (term) =>
+      !title.includes(term) &&
+      abstract.includes(term)
+  );
 
-  const abstractMatches =
-    queryTerms.filter(
-      (term) =>
-        !title.includes(term) &&
-        abstract.includes(term)
-    );
+  const uniqueTitleMatches = unique(
+    titleMatches
+  ).slice(0, 3);
 
-  const uniqueTitleMatches =
-    unique(titleMatches)
-      .slice(0, 3);
+  const uniqueAbstractMatches = unique(
+    abstractMatches
+  ).slice(0, 3);
 
-  const uniqueAbstractMatches =
-    unique(abstractMatches)
-      .slice(0, 3);
-
-  if (
-    uniqueTitleMatches.length >= 3
-  ) {
-
+  if (uniqueTitleMatches.length >= 3) {
     return (
       `Directly related to the compared papers through shared focus on ` +
       `${uniqueTitleMatches.join(", ")}.`
     );
   }
 
-  if (
-    uniqueTitleMatches.length === 2
-  ) {
-
+  if (uniqueTitleMatches.length === 2) {
     return (
       `Closely related through shared research focus on ` +
       `${uniqueTitleMatches[0]} and ${uniqueTitleMatches[1]}.`
     );
   }
 
-  if (
-    uniqueTitleMatches.length === 1
-  ) {
-
-    if (
-      uniqueAbstractMatches.length > 0
-    ) {
-
+  if (uniqueTitleMatches.length === 1) {
+    if (uniqueAbstractMatches.length > 0) {
       return (
         `Shares a direct focus on ` +
         `${uniqueTitleMatches[0]}, with additional overlap in ` +
@@ -377,20 +287,14 @@ function getRecommendationReason(
     );
   }
 
-  if (
-    uniqueAbstractMatches.length >= 3
-  ) {
-
+  if (uniqueAbstractMatches.length >= 3) {
     return (
       `Related through research concepts including ` +
       `${uniqueAbstractMatches.join(", ")}.`
     );
   }
 
-  if (
-    uniqueAbstractMatches.length === 2
-  ) {
-
+  if (uniqueAbstractMatches.length === 2) {
     return (
       `Related through shared concepts around ` +
       `${uniqueAbstractMatches[0]} and ` +
@@ -398,10 +302,7 @@ function getRecommendationReason(
     );
   }
 
-  if (
-    uniqueAbstractMatches.length === 1
-  ) {
-
+  if (uniqueAbstractMatches.length === 1) {
     return (
       `Related through its research focus on ` +
       `${uniqueAbstractMatches[0]}.`
@@ -414,368 +315,16 @@ function getRecommendationReason(
   );
 }
 
-
-// =========================================================
-// RECOMMENDED LITERATURE
-// =========================================================
-
-function RecommendedLiterature({
-  papers,
-  loading,
-  query,
-}: {
-  papers: PaperMetadata[];
-  loading: boolean;
-  query: string;
-}) {
-
-  const [
-    scrollContainer,
-    setScrollContainer,
-  ] = useState<HTMLDivElement | null>(
-    null
-  );
-
-
-  const scroll = (
-    direction: "left" | "right"
-  ) => {
-
-    if (!scrollContainer) {
-      return;
-    }
-
-    scrollContainer.scrollBy({
-      left:
-        direction === "left"
-          ? -390
-          : 390,
-      behavior: "smooth",
-    });
-  };
-
-
-  if (
-    !loading &&
-    papers.length === 0
-  ) {
-    return null;
-  }
-
-
-  return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-
-      {/* ================================================= */}
-      {/* HEADER */}
-      {/* ================================================= */}
-
-      <div className="flex items-start justify-between gap-4">
-
-        <div className="flex items-start gap-3">
-
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
-            <Sparkles className="h-5 w-5" />
-          </div>
-
-          <div>
-
-            <h2 className="text-xl font-semibold text-slate-900">
-              Related Literature
-            </h2>
-
-            <p className="mt-1 text-sm leading-6 text-slate-500">
-              Literature discovered from the combined
-              research themes of the compared papers.
-            </p>
-
-          </div>
-
-        </div>
-
-
-        {!loading &&
-          papers.length > 1 && (
-
-            <div className="hidden gap-2 sm:flex">
-
-              <button
-                type="button"
-                onClick={() =>
-                  scroll("left")
-                }
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
-                aria-label="Previous related papers"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  scroll("right")
-                }
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
-                aria-label="Next related papers"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-
-            </div>
-          )}
-
-      </div>
-
-
-      {/* ================================================= */}
-      {/* LOADING */}
-      {/* ================================================= */}
-
-      {loading ? (
-
-        <div className="mt-6 flex gap-5 overflow-hidden">
-
-          {[1, 2, 3].map(
-            (item) => (
-
-              <div
-                key={item}
-                className="flex min-h-[410px] min-w-[340px] max-w-[340px] shrink-0 flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5"
-              >
-
-                <div className="flex justify-between">
-
-                  <div className="h-9 w-9 animate-pulse rounded-xl bg-slate-200" />
-
-                  <div className="h-9 w-9 animate-pulse rounded-xl bg-slate-200" />
-
-                </div>
-
-                <div className="mt-5 h-5 w-4/5 animate-pulse rounded bg-slate-200" />
-
-                <div className="mt-2 h-5 w-3/5 animate-pulse rounded bg-slate-200" />
-
-                <div className="mt-5 h-6 w-2/5 animate-pulse rounded-full bg-slate-200" />
-
-                <div className="mt-5 space-y-2">
-
-                  <div className="h-3 w-full animate-pulse rounded bg-slate-200" />
-
-                  <div className="h-3 w-5/6 animate-pulse rounded bg-slate-200" />
-
-                  <div className="h-3 w-4/6 animate-pulse rounded bg-slate-200" />
-
-                </div>
-
-                <div className="mt-auto h-11 animate-pulse rounded-xl bg-slate-200" />
-
-              </div>
-            )
-          )}
-
-        </div>
-
-      ) : (
-
-        <div
-          ref={setScrollContainer}
-          className="mt-6 flex gap-5 overflow-x-auto scroll-smooth pb-4 [scrollbar-width:thin]"
-        >
-
-          {papers.map(
-            (paper, index) => {
-
-              const title =
-                cleanText(
-                  paper.title
-                ) ||
-                "Untitled paper";
-
-              const url =
-                getPaperUrl(
-                  paper
-                );
-
-              const reason =
-                getRecommendationReason(
-                  paper,
-                  query
-                );
-
-              return (
-
-                <article
-                  key={`${paper.source}-${paper.source_id}-${index}`}
-                  className="flex min-h-[410px] min-w-[340px] max-w-[340px] shrink-0 flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5 transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md"
-                >
-
-                  {/* ===================================== */}
-                  {/* ICON */}
-                  {/* ===================================== */}
-
-                  <div className="flex items-start justify-between">
-
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm">
-                      <BookOpen className="h-4 w-4" />
-                    </div>
-
-                    {url && (
-
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-                        aria-label={`Open ${title}`}
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
-
-                    )}
-
-                  </div>
-
-
-                  {/* ===================================== */}
-                  {/* TITLE */}
-                  {/* ===================================== */}
-
-                  <h3 className="mt-4 line-clamp-3 min-h-[72px] text-base font-semibold leading-6 text-slate-900">
-                    {title}
-                  </h3>
-
-
-                  {/* ===================================== */}
-                  {/* SOURCE / YEAR */}
-                  {/* ===================================== */}
-
-                  <div className="mt-3 flex min-h-[28px] flex-wrap gap-2 text-xs">
-
-                    {paper.source && (
-
-                      <span className="rounded-full bg-white px-2.5 py-1 font-medium text-slate-600 shadow-sm">
-                        {paper.source}
-                      </span>
-
-                    )}
-
-                    {paper.year && (
-
-                      <span className="rounded-full bg-white px-2.5 py-1 text-slate-500 shadow-sm">
-                        {paper.year}
-                      </span>
-
-                    )}
-
-                  </div>
-
-
-                  {/* ===================================== */}
-                  {/* AUTHORS */}
-                  {/* ===================================== */}
-
-                  <p className="mt-4 line-clamp-2 min-h-[40px] text-xs leading-5 text-slate-500">
-                    {paper.authors?.length
-                      ? paper.authors
-                          .slice(0, 3)
-                          .join(", ")
-                      : "Authors unavailable"}
-                  </p>
-
-
-                  {/* ===================================== */}
-                  {/* WHY RECOMMENDED */}
-                  {/* ===================================== */}
-
-                  <div className="mt-4 rounded-xl border border-violet-100 bg-violet-50 p-3.5">
-
-                    <div className="flex items-center gap-2">
-
-                      <Sparkles className="h-3.5 w-3.5 text-violet-600" />
-
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">
-                        Why relevant
-                      </p>
-
-                    </div>
-
-                    <p className="mt-2 line-clamp-4 text-xs leading-5 text-violet-900">
-                      {reason}
-                    </p>
-
-                  </div>
-
-
-                  {/* ===================================== */}
-                  {/* BUTTON */}
-                  {/* ===================================== */}
-
-                  <div className="mt-auto pt-5">
-
-                    {url ? (
-
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
-                      >
-
-                        <span className="text-white">
-                          Read paper
-                        </span>
-
-                        <ExternalLink className="h-4 w-4 text-white" />
-
-                      </a>
-
-                    ) : (
-
-                      <div className="flex min-h-[42px] w-full items-center justify-center rounded-xl bg-slate-200 px-4 py-2.5 text-sm font-medium text-slate-500">
-                        Paper link unavailable
-                      </div>
-
-                    )}
-
-                  </div>
-
-                </article>
-              );
-            }
-          )}
-
-        </div>
-      )}
-
-
-      {!loading &&
-        papers.length > 0 && (
-
-          <p className="mt-1 text-xs text-slate-400">
-            Swipe horizontally to explore related papers.
-          </p>
-
-        )}
-
-    </section>
-  );
-}
-
-
 // =========================================================
 // MAIN PAGE
 // =========================================================
 
 export default function ComparePage() {
+  const [papers, setPapers] = useState<Paper[]>([]);
 
-  const [papers, setPapers] =
-    useState<Paper[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
 
-  const [selected, setSelected] =
-    useState<string[]>([]);
-
-  const [rows, setRows] =
-    useState<CompareRow[]>([]);
+  const [rows, setRows] = useState<CompareRow[]>([]);
 
   const [loadingPapers, setLoadingPapers] =
     useState(true);
@@ -783,123 +332,149 @@ export default function ComparePage() {
   const [loadingCompare, setLoadingCompare] =
     useState(false);
 
-  const [loadingRecommendations, setLoadingRecommendations] =
-    useState(false);
+  // -------------------------------------------------------
+  // COMBINED RECOMMENDATIONS
+  // -------------------------------------------------------
 
-  const [recommendedPapers, setRecommendedPapers] =
-    useState<PaperMetadata[]>([]);
+  const [
+    loadingRecommendations,
+    setLoadingRecommendations,
+  ] = useState(false);
 
-  const [recommendationQuery, setRecommendationQuery] =
-    useState("");
+  const [
+    recommendedPapers,
+    setRecommendedPapers,
+  ] = useState<PaperMetadata[]>([]);
 
-  const [error, setError] =
-    useState("");
+  const [
+    recommendationQuery,
+    setRecommendationQuery,
+  ] = useState("");
+
+  // -------------------------------------------------------
+  // INDIVIDUAL PAPER RECOMMENDATIONS
+  // -------------------------------------------------------
+
+  const [
+    selectedRecommendationPaperId,
+    setSelectedRecommendationPaperId,
+  ] = useState<string | null>(null);
+
+  const [
+    individualRecommendations,
+    setIndividualRecommendations,
+  ] = useState<
+    Record<string, PaperMetadata[]>
+  >({});
+
+  const [
+    loadingIndividualRecommendations,
+    setLoadingIndividualRecommendations,
+  ] = useState(false);
+
+  const [
+    individualRecommendationError,
+    setIndividualRecommendationError,
+  ] = useState("");
+
+  // -------------------------------------------------------
+  // GENERAL ERRORS
+  // -------------------------------------------------------
+
+  const [error, setError] = useState("");
 
   const [
     recommendationError,
     setRecommendationError,
   ] = useState("");
 
-
   // =======================================================
   // LOAD PAPERS
   // =======================================================
 
   useEffect(() => {
-
     async function load() {
-
       try {
-
         setLoadingPapers(true);
         setError("");
 
-        const data =
-          await getPapers();
+        const data = await getPapers();
 
         setPapers(data);
-
       } catch (err) {
-
         console.error(err);
 
         setError(
           "Failed to load papers."
         );
-
       } finally {
-
         setLoadingPapers(false);
-
       }
     }
 
     load();
-
   }, []);
-
 
   // =======================================================
   // TOGGLE PAPER
   // =======================================================
 
-  function togglePaper(
-    id: string
-  ) {
-
-    setSelected(
-      (prev) =>
-        prev.includes(id)
-          ? prev.filter(
-              (p) => p !== id
-            )
-          : [
-              ...prev,
-              id,
-            ].slice(0, 4)
+  function togglePaper(id: string) {
+    setSelected((prev) =>
+      prev.includes(id)
+        ? prev.filter(
+            (p) => p !== id
+          )
+        : [
+            ...prev,
+            id,
+          ].slice(0, 4)
     );
 
     // Clear previous comparison/recommendations
     // when the selection changes.
     setRows([]);
-    setRecommendedPapers([]);
-    setRecommendationQuery("");
-    setRecommendationError("");
-  }
 
+    setRecommendedPapers([]);
+
+    setRecommendationQuery("");
+
+    setRecommendationError("");
+
+    setSelectedRecommendationPaperId(null);
+
+    setIndividualRecommendations({});
+
+    setIndividualRecommendationError("");
+  }
 
   // =======================================================
   // SELECTED PAPERS
   // =======================================================
 
-  const selectedPapers =
-    useMemo(
-      () =>
-        papers.filter(
-          (paper) =>
-            selected.includes(
-              paper.id
-            )
-        ),
-      [
-        papers,
-        selected,
-      ]
-    );
-
+  const selectedPapers = useMemo(
+    () =>
+      papers.filter(
+        (paper) =>
+          selected.includes(
+            paper.id
+          )
+      ),
+    [
+      papers,
+      selected,
+    ]
+  );
 
   // =======================================================
-  // GENERATE RECOMMENDATIONS
+  // GENERATE COMBINED RECOMMENDATIONS
   // =======================================================
 
   async function generateRecommendations(
     comparedPapers: Paper[],
     comparisonRows: CompareRow[]
   ) {
-
-    if (
-      comparedPapers.length < 2
-    ) {
+    if (comparedPapers.length < 2) {
       return;
     }
 
@@ -914,9 +489,10 @@ export default function ComparePage() {
     }
 
     try {
-
       setLoadingRecommendations(true);
+
       setRecommendationError("");
+
       setRecommendationQuery(query);
 
       console.log(
@@ -962,9 +538,7 @@ export default function ComparePage() {
         "[Comparison Discovery] Results:",
         filtered
       );
-
     } catch (err) {
-
       console.error(
         "[Comparison Discovery] Failed:",
         err
@@ -975,26 +549,113 @@ export default function ComparePage() {
       setRecommendationError(
         "Related literature could not be loaded."
       );
-
     } finally {
+      setLoadingRecommendations(false);
+    }
+  }
 
-      setLoadingRecommendations(
+  // =======================================================
+  // GENERATE PAPER-SPECIFIC RECOMMENDATIONS
+  // =======================================================
+
+  async function generateIndividualRecommendations(
+    paper: Paper
+  ) {
+    const cached =
+      individualRecommendations[
+        paper.id
+      ];
+
+    // Immediately mark this paper as active.
+    setSelectedRecommendationPaperId(
+      paper.id
+    );
+
+    setIndividualRecommendationError("");
+
+    // If we already fetched this paper,
+    // reuse the cached results.
+    if (cached) {
+      return;
+    }
+
+    const query =
+      buildComparisonQuery(
+        [paper],
+        []
+      );
+
+    if (!query) {
+      setIndividualRecommendations(
+        (prev) => ({
+          ...prev,
+          [paper.id]: [],
+        })
+      );
+
+      return;
+    }
+
+    try {
+      setLoadingIndividualRecommendations(
+        true
+      );
+
+      console.log(
+        "[Paper Discovery] Query:",
+        query
+      );
+
+      const results =
+        await searchGlobalLiterature(
+          query,
+          8
+        );
+
+      const paperTitle =
+        cleanText(
+          paper.title
+        ).toLowerCase();
+
+      // Remove the paper itself if it happens
+      // to appear in the discovery results.
+      const filtered =
+        results.filter(
+          (result) =>
+            cleanText(
+              result.title
+            ).toLowerCase() !==
+            paperTitle
+        );
+
+      setIndividualRecommendations(
+        (prev) => ({
+          ...prev,
+          [paper.id]: filtered,
+        })
+      );
+    } catch (err) {
+      console.error(
+        "[Paper Discovery] Failed:",
+        err
+      );
+
+      setIndividualRecommendationError(
+        "Recommendations for this paper could not be loaded."
+      );
+    } finally {
+      setLoadingIndividualRecommendations(
         false
       );
     }
   }
-
 
   // =======================================================
   // COMPARE
   // =======================================================
 
   async function handleCompare() {
-
-    if (
-      selected.length < 2
-    ) {
-
+    if (selected.length < 2) {
       setError(
         "Select at least 2 papers to compare."
       );
@@ -1003,23 +664,32 @@ export default function ComparePage() {
     }
 
     try {
-
       setLoadingCompare(true);
+
       setError("");
 
       setRows([]);
+
       setRecommendedPapers([]);
+
       setRecommendationQuery("");
+
       setRecommendationError("");
+
+      setSelectedRecommendationPaperId(
+        null
+      );
+
+      setIndividualRecommendations({});
+
+      setIndividualRecommendationError("");
 
       const data =
         await comparePapers(
           selected
         );
 
-      setRows(
-        data.rows
-      );
+      setRows(data.rows);
 
       // ---------------------------------------------------
       // Immediately search literature based on the
@@ -1030,22 +700,16 @@ export default function ComparePage() {
         selectedPapers,
         data.rows
       );
-
     } catch (err) {
-
       console.error(err);
 
       setError(
         "Comparison failed."
       );
-
     } finally {
-
       setLoadingCompare(false);
-
     }
   }
-
 
   // =======================================================
   // RENDER
@@ -1053,7 +717,6 @@ export default function ComparePage() {
 
   return (
     <AppShell>
-
       <div className="space-y-8">
 
         {/* ================================================= */}
@@ -1082,28 +745,21 @@ export default function ComparePage() {
 
             </div>
 
-
             <div className="hidden rounded-2xl bg-slate-50 p-3 md:block">
-
               <GitCompareArrows className="h-8 w-8 text-blue-600" />
-
             </div>
 
           </div>
-
 
           {/* ================================================= */}
           {/* ERROR */}
           {/* ================================================= */}
 
           {error ? (
-
             <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
             </div>
-
           ) : null}
-
 
           {/* ================================================= */}
           {/* PAPER CARDS */}
@@ -1134,7 +790,6 @@ export default function ComparePage() {
                     );
 
                   return (
-
                     <button
                       key={paper.id}
                       type="button"
@@ -1171,11 +826,8 @@ export default function ComparePage() {
 
                         </div>
 
-
                         {active && (
-
                           <CheckCircle2 className="h-5 w-5 shrink-0 text-blue-600" />
-
                         )}
 
                       </div>
@@ -1188,7 +840,6 @@ export default function ComparePage() {
             )}
 
           </div>
-
 
           {/* ================================================= */}
           {/* COMPARE BUTTON */}
@@ -1207,7 +858,6 @@ export default function ComparePage() {
               {" "} / 4
 
             </p>
-
 
             <button
               type="button"
@@ -1229,7 +879,6 @@ export default function ComparePage() {
 
         </section>
 
-
         {/* ================================================= */}
         {/* COMPARISON TABLE */}
         {/* ================================================= */}
@@ -1241,43 +890,190 @@ export default function ComparePage() {
           }
         />
 
-
         {/* ================================================= */}
-        {/* RECOMMENDED LITERATURE */}
+        {/* COMBINED RECOMMENDATIONS */}
         {/* ================================================= */}
 
         {rows.length > 0 && (
-
-          <RecommendedLiterature
-            papers={
-              recommendedPapers
-            }
-            loading={
-              loadingRecommendations
-            }
-            query={
-              recommendationQuery
-            }
+          <RecommendedPapers
+            papers={recommendedPapers}
+            loading={loadingRecommendations}
+            query={recommendationQuery}
+            title="Related Literature"
+            description="Literature discovered from the combined research themes of the compared papers."
+            scrollId="comparison-combined-recommendations"
           />
-
         )}
 
+        {/* ================================================= */}
+        {/* PAPER-SPECIFIC RECOMMENDATIONS */}
+        {/* ================================================= */}
+
+        {rows.length > 0 && (
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+
+            {/* HEADER */}
+
+            <div>
+
+              <h2 className="text-xl font-semibold text-slate-900">
+                Recommendations by Paper
+              </h2>
+
+              <p className="mt-1 text-sm leading-5 text-slate-500">
+                Select one of the compared papers to discover literature specifically related to it.
+              </p>
+
+            </div>
+
+            {/* ================================================= */}
+            {/* PAPER SELECTOR */}
+            {/* ================================================= */}
+
+            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+
+              {selectedPapers.map(
+                (paper) => {
+
+                  const active =
+                    selectedRecommendationPaperId ===
+                    paper.id;
+
+                  return (
+                    <button
+                      key={paper.id}
+                      type="button"
+                      onClick={() =>
+                        generateIndividualRecommendations(
+                          paper
+                        )
+                      }
+                      className={`rounded-2xl border p-4 text-left transition ${
+                        active
+                          ? "border-violet-300 bg-violet-50 ring-1 ring-violet-100"
+                          : "border-slate-200 bg-white hover:border-violet-200 hover:bg-slate-50"
+                      }`}
+                    >
+
+                      <div className="flex items-start justify-between gap-3">
+
+                        <div className="min-w-0">
+
+                          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                            Compared paper
+                          </p>
+
+                          <h3 className="mt-1 line-clamp-3 text-sm font-semibold leading-5 text-slate-900">
+                            {getPaperTitle(
+                              paper
+                            )}
+                          </h3>
+
+                        </div>
+
+                        {active && (
+                          <CheckCircle2 className="h-5 w-5 shrink-0 text-violet-600" />
+                        )}
+
+                      </div>
+
+                    </button>
+                  );
+                }
+              )}
+
+            </div>
+
+            {/* ================================================= */}
+            {/* INDIVIDUAL ERROR */}
+            {/* ================================================= */}
+
+            {individualRecommendationError && (
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                {individualRecommendationError}
+              </div>
+            )}
+
+            {/* ================================================= */}
+            {/* INDIVIDUAL RECOMMENDATIONS */}
+            {/* ================================================= */}
+
+            {selectedRecommendationPaperId && (
+              <div className="mt-6">
+
+                {(() => {
+
+                  const activePaper =
+                    selectedPapers.find(
+                      (paper) =>
+                        paper.id ===
+                        selectedRecommendationPaperId
+                    );
+
+                  if (!activePaper) {
+                    return null;
+                  }
+
+                  return (
+                    <RecommendedPapers
+                      papers={
+                        individualRecommendations[
+                          activePaper.id
+                        ] || []
+                      }
+                      loading={
+                        loadingIndividualRecommendations
+                      }
+                      query={buildComparisonQuery(
+                        [activePaper],
+                        []
+                      )}
+                      title={`Recommendations for ${getPaperTitle(
+                        activePaper
+                      )}`}
+                      description="Literature discovered specifically from this paper's research topic, methodology, and dataset."
+                      scrollId="comparison-individual-recommendations"
+                    />
+                  );
+
+                })()}
+
+                {/* ================================================= */}
+                {/* EMPTY INDIVIDUAL RESULT */}
+                {/* ================================================= */}
+
+                {!loadingIndividualRecommendations &&
+                  individualRecommendations[
+                    selectedRecommendationPaperId
+                  ] &&
+                  individualRecommendations[
+                    selectedRecommendationPaperId
+                  ].length === 0 &&
+                  !individualRecommendationError && (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                      No specific recommendations were found
+                      for this paper.
+                    </div>
+                  )}
+
+              </div>
+            )}
+
+          </section>
+        )}
 
         {/* ================================================= */}
-        {/* RECOMMENDATION ERROR */}
+        {/* COMBINED RECOMMENDATION ERROR */}
         {/* ================================================= */}
 
         {recommendationError &&
           !loadingRecommendations && (
-
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               {recommendationError}
             </div>
-
           )}
 
       </div>
-
     </AppShell>
   );
 }

@@ -82,6 +82,31 @@ export const getExtraction = (
   );
 
 
+export const deletePaper = (
+  id: string,
+): Promise<{
+  paper_id: string;
+  message: string;
+  vectors_deleted: number;
+  chunks_deleted: number;
+  extraction_deleted: number;
+  file_deleted: boolean;
+}> =>
+  api<{
+    paper_id: string;
+    message: string;
+    vectors_deleted: number;
+    chunks_deleted: number;
+    extraction_deleted: number;
+    file_deleted: boolean;
+  }>(
+    `/papers/${id}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+
 /*
  * The backend returns:
  * {
@@ -140,7 +165,11 @@ export async function uploadPaper(
   status: string;
 }> {
   const formData = new FormData();
-  formData.append("file", file);
+
+  formData.append(
+    "file",
+    file,
+  );
 
   const response = await fetch(
     `${API_BASE}/papers/upload`,
@@ -153,7 +182,9 @@ export async function uploadPaper(
   if (!response.ok) {
     const text = await response.text();
 
-    throw new Error(text || "Upload failed");
+    throw new Error(
+      text || "Upload failed",
+    );
   }
 
   return response.json() as Promise<{
@@ -168,9 +199,12 @@ export async function uploadPaper(
 export const parsePaper = (
   id: string,
 ) =>
-  api(`/papers/${id}/parse`, {
-    method: "POST",
-  });
+  api(
+    `/papers/${id}/parse`,
+    {
+      method: "POST",
+    },
+  );
 
 
 export const extractPaper = (
@@ -197,15 +231,18 @@ export const comparePapers = (
   api<{
     rows: CompareRow[];
     paper_map?: Record<string, string>;
-  }>("/compare", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  }>(
+    "/compare",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        paper_ids: paperIds,
+      }),
     },
-    body: JSON.stringify({
-      paper_ids: paperIds,
-    }),
-  });
+  );
 
 
 export const generateReview = (
@@ -286,7 +323,9 @@ export const analyzeIdeation = (data: {
 
 export const createSectionPlan = (data: {
   paper_ids: string[];
-  section_type: "related_work" | "methodology";
+  section_type:
+    | "related_work"
+    | "methodology";
   research_topic?: string;
   target_word_count?: number;
 }): Promise<SectionPlanResponse> =>
@@ -304,7 +343,9 @@ export const createSectionPlan = (data: {
 
 export const generateManuscriptSection = (data: {
   paper_ids: string[];
-  section_type: "related_work" | "methodology";
+  section_type:
+    | "related_work"
+    | "methodology";
   research_topic?: string;
   target_word_count?: number;
   sentence_plan?: SentencePlan[];
@@ -345,7 +386,9 @@ export const createWorkspace = (data: {
 
 
 export const getWorkspaces = (): Promise<Workspace[]> =>
-  api<Workspace[]>("/workspaces");
+  api<Workspace[]>(
+    "/workspaces",
+  );
 
 
 export const getWorkspace = (
@@ -384,7 +427,9 @@ export const generateWorkspaceContent = (
     content_type: WorkspaceContentType;
     target_word_count?: number;
     generate_latex?: boolean;
-    citation_style?: "internal" | "latex";
+    citation_style?:
+      | "internal"
+      | "latex";
     instructions?: string;
   },
 ): Promise<WorkspaceGenerationResponse> =>

@@ -14,6 +14,9 @@ type RecommendedPapersProps = {
   papers: PaperMetadata[];
   loading?: boolean;
   query?: string;
+  title?: string;
+  description?: string;
+  scrollId?: string;
 };
 
 // ---------------------------------------------------------
@@ -53,7 +56,7 @@ function getAuthors(paper: PaperMetadata): string {
 function getPaperUrl(
   paper: PaperMetadata
 ): string | undefined {
-  return paper.pdf_url || paper.url || undefined;
+  return paper.pdf_url || undefined;
 }
 
 
@@ -279,6 +282,9 @@ export function RecommendedPapers({
   papers,
   loading = false,
   query = "",
+  title = "Recommended Literature",
+  description = "Related research discovered from your extracted paper.",
+  scrollId = "recommended-papers-scroll",
 }: RecommendedPapersProps) {
 
   const scroll = (
@@ -286,9 +292,7 @@ export function RecommendedPapers({
   ) => {
 
     const container =
-      document.getElementById(
-        "recommended-papers-scroll"
-      );
+      document.getElementById(scrollId);
 
     if (!container) {
       return;
@@ -336,12 +340,11 @@ export function RecommendedPapers({
           <div>
 
             <h2 className="text-xl font-semibold text-slate-900">
-              Recommended Literature
+              {title}
             </h2>
 
             <p className="mt-1 text-sm leading-5 text-slate-500">
-              Related research discovered from your
-              extracted paper.
+              {description}
             </p>
 
           </div>
@@ -445,7 +448,7 @@ export function RecommendedPapers({
         /* ================================================= */
 
         <div
-          id="recommended-papers-scroll"
+          id={scrollId}
           className="mt-6 flex gap-5 overflow-x-auto scroll-smooth pb-4 [scrollbar-width:thin]"
         >
 
