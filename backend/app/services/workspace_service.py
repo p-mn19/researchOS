@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from bson import ObjectId
 from fastapi import HTTPException
 from app.config import settings
+from app.services.citation_service import build_references_bib
 from app.services.groq_client import get_groq_client, has_groq_api_keys
 from app.db import (
     extractions_collection,
@@ -290,6 +291,11 @@ def _serialize_workspace(document: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _serialize_version(document: Dict[str, Any]) -> Dict[str, Any]:
+    citations = [
+        WorkspaceCitation.model_validate(citation)
+        for citation in document.get("citations", [])
+    ]
+
     return {
         "id": str(document["_id"]),
         "workspace_id": document.get("workspace_id", ""),
@@ -303,6 +309,7 @@ def _serialize_version(document: Dict[str, Any]) -> Dict[str, Any]:
             "",
         ),
         "citations": document.get("citations", []),
+        "bibtex": build_references_bib(citations),
         "warnings": document.get("warnings", []),
         "source_chunk_ids": document.get(
             "source_chunk_ids",
@@ -870,6 +877,39 @@ def _latex_escape(text: str) -> str:
     return text
 
 
+def _markdown_inline_to_latex(text: str) -> str:
+    """Escape text and translate Markdown bold markers to LaTeX."""
+    escaped = _latex_escape(text)
+
+    return re.sub(
+        r"\*\*(.+?)\*\*",
+        r"\\textbf{\1}",
+        escaped,
+    )
+
+
+def _is_redundant_section_title(
+    paragraph: str,
+    title: str,
+) -> bool:
+    """Detect a Markdown title that repeats the generated section title."""
+    candidate = paragraph.strip()
+    candidate = re.sub(r"^#{1,6}\s+", "", candidate)
+
+    bold_match = re.fullmatch(r"\*\*(.+?)\*\*", candidate)
+
+    if bold_match:
+        candidate = bold_match.group(1)
+
+    normalise = lambda value: re.sub(
+        r"[^a-z0-9]+",
+        " ",
+        value.lower(),
+    ).strip()
+
+    return normalise(candidate) == normalise(title)
+
+
 def _markdown_to_latex(
     markdown: str,
     title: str,
@@ -883,7 +923,7 @@ def _markdown_to_latex(
     citation_tokens: Dict[str, str] = {}
 
     for index, citation in enumerate(citations):
-        token = f"@@CITATION_{index}@@"
+        token = f"RESEARCHOSCITATION{index}TOKEN"
         command = (
             f"\\cite{{{citation.citation_key}}}"
         )
@@ -899,6 +939,12 @@ def _markdown_to_latex(
         )
         if paragraph.strip()
     ]
+
+    if paragraphs and _is_redundant_section_title(
+        paragraphs[0],
+        title,
+    ):
+        paragraphs.pop(0)
 
     latex_parts = [
         f"\\section{{{_latex_escape(title)}}}"
@@ -928,7 +974,7 @@ def _markdown_to_latex(
                     line,
                 ).strip()
 
-                escaped = _latex_escape(item)
+                escaped = _markdown_inline_to_latex(item)
 
                 for token, command in citation_tokens.items():
                     escaped = escaped.replace(
@@ -951,13 +997,13 @@ def _markdown_to_latex(
         if heading:
             escaped = (
                 "\\subsection{"
-                + _latex_escape(
+                + _markdown_inline_to_latex(
                     heading.group(1)
                 )
                 + "}"
             )
         else:
-            escaped = _latex_escape(paragraph)
+            escaped = _markdown_inline_to_latex(paragraph)
 
         for token, command in citation_tokens.items():
             escaped = escaped.replace(
@@ -1383,6 +1429,7 @@ def create_workspace_version(
             citation.model_dump()
             for citation in payload.citations
         ],
+        "bibtex": build_references_bib(payload.citations),
         "warnings": payload.warnings,
         "source_chunk_ids": payload.source_chunk_ids,
         "version": version_number,

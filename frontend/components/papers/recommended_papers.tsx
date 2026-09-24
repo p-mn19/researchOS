@@ -53,7 +53,7 @@ function getAuthors(paper: PaperMetadata): string {
 function getPaperUrl(
   paper: PaperMetadata
 ): string | undefined {
-  return paper.pdf_url || paper.url || undefined;
+  return paper.pdf_url || undefined;
 }
 
 

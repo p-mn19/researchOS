@@ -600,13 +600,9 @@ function getAuthors(
 }
 
 function getPaperUrl(
-  paper: PaperMetadata
+  paper: PaperMetadata,
 ): string | undefined {
-  return (
-    paper.pdf_url ||
-    paper.url ||
-    undefined
-  );
+  return paper.pdf_url || undefined;
 }
 
 /* =========================================================
@@ -985,7 +981,10 @@ export default function PaperDetailPage() {
       setAnswerSources([]);
 
       const data = await searchPaper(id, value);
-      setResults(data);
+
+      setResults(
+        normalizeSearchResults(data),
+      );
     } catch (error) {
       console.error(
         "Search failed:",

@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import List, Literal, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -223,6 +224,38 @@ class WorkspaceVersionResponse(
 
     workspace_id: str
 
+    bibtex: str = ""
+
     version: int
 
     created_at: datetime
+
+class WorkspaceLatexCompileRequest(BaseModel):
+    latex_code: str = Field(
+        min_length=1,
+        max_length=250_000,
+        description=(
+            "A complete LaTeX document or a LaTeX section "
+            "generated in the ResearchOS workspace."
+        ),
+    )
+    references_bib: str = Field(
+        default="",
+        max_length=250_000,
+        description=(
+            "Optional BibTeX entries used by the LaTeX document."
+        ),
+    )
+
+
+class LatexCompileError(BaseModel):
+    line: Optional[int] = None
+    message: str
+
+
+class WorkspaceLatexCompileStatusResponse(BaseModel):
+    success: bool
+    log: str = ""
+    errors: list[LatexCompileError] = Field(
+        default_factory=list,
+    )
