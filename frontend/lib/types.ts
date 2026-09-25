@@ -9,17 +9,14 @@ export interface Paper {
   id: string;
   title: string;
   filename: string;
-
   authors?: string[];
   year?: number | null;
   abstract?: string;
-
   uploaded_at?: string | null;
   parsed_at?: string | null;
   indexed_at?: string | null;
   extracted_at?: string | null;
   updated_at?: string | null;
-
   status: PaperStatus;
 
   objective?: string | null;
@@ -36,18 +33,15 @@ export interface Paper {
 
 export interface Extraction {
   paper_id?: string;
-
   objective?: string | null;
   methodology?: string | null;
   dataset?: string | null;
   evaluation_metric?: string | null;
   limitations?: string | null;
   future_work?: string | null;
-
   research_gap?: string | null;
   findings?: string | null;
   keywords?: string[];
-
   updated_at?: string | null;
 }
 
@@ -67,14 +61,11 @@ export interface ChunkResult {
   paper_id?: string;
   paper_title?: string;
   filename?: string | null;
-
   section_title?: string | null;
   page?: number | null;
   page_number?: number | null;
-
   text: string;
   score?: number;
-
   metadata?: SearchMetadata | null;
 }
 
@@ -89,7 +80,10 @@ export interface PaperSearchResponse {
 
 export interface CompareRow {
   field: string;
-  values: Record<string, string | number | null | undefined>;
+  values: Record<
+    string,
+    string | number | null | undefined
+  >;
 }
 
 
@@ -128,12 +122,53 @@ export interface LiteraturePaper {
 export interface PaperMetadata extends LiteraturePaper {}
 
 
+/* ============================================================
+   Module 7 — Reviewer Simulation
+   ============================================================ */
+
+export type ReviewConcern =
+  | "None"
+  | "Moderate"
+  | "Major"
+  | "Critical";
+
+
+export type ReviewConfidence =
+  | "Low"
+  | "Medium"
+  | "High";
+
+
 export interface ReviewDimension {
   id: string;
   title: string;
+
+  /*
+   * Score generated from the paper evidence by the
+   * review model.
+   */
   score: string;
-  concern: "None" | "Moderate" | "Major" | "Critical";
+
+  /*
+   * Severity of the issue identified in this dimension.
+   */
+  concern: ReviewConcern;
+
+  /*
+   * Confidence reflects how strongly the available
+   * paper evidence supports the assessment.
+   */
+  confidence: ReviewConfidence;
+
+  /*
+   * Evidence taken from the supplied paper context.
+   */
   evidence: string;
+
+  /*
+   * Actionable improvement suggested from the
+   * identified evidence/gap.
+   */
   suggestion: string;
 }
 
@@ -141,15 +176,51 @@ export interface ReviewDimension {
 export interface ReviewReport {
   paperId: string;
   paperTitle: string;
+
+  /*
+   * Overall numerical assessment.
+   * Example: "7.4/10"
+   */
   overallScore: string;
+
+  /*
+   * Natural-language assessment generated from
+   * the paper evidence.
+   */
+  overallAssessment: string;
+
+  /*
+   * Kept for compatibility with the existing
+   * review frontend/backend structure.
+   */
   summary: string;
+
+  /*
+   * Positive aspects identified from the paper.
+   */
+  strengths: string[];
+
+  /*
+   * Weaknesses or areas requiring improvement.
+   */
+  weaknesses: string[];
+
+  /*
+   * Information that is missing or insufficiently
+   * supported in the available paper content.
+   */
+  missingInformation: string[];
+
+  /*
+   * Detailed assessment across the fixed review
+   * dimensions.
+   */
   dimensions: ReviewDimension[];
 
-  research_gap?: string;
-  findings?: string;
-  future_work?: string;
-  limitations?: string;
-  methodology?: string;
+  /*
+   * Backend model used for the review.
+   */
+  model?: string;
 }
 
 
@@ -214,7 +285,10 @@ export type CitationSource = {
 
 
 export type SectionPlanResponse = {
-  section_type: "related_work" | "methodology";
+  section_type:
+    | "related_work"
+    | "methodology";
+
   section_title: string;
   objective: string;
   sentence_plan: SentencePlan[];
@@ -224,7 +298,10 @@ export type SectionPlanResponse = {
 
 
 export type DraftSectionResponse = {
-  section_type: "related_work" | "methodology";
+  section_type:
+    | "related_work"
+    | "methodology";
+
   section_title: string;
   markdown: string;
   citations: CitationSource[];
@@ -284,16 +361,13 @@ export interface WorkspaceCitation {
 export interface WorkspaceGenerationResponse {
   workspace_id: string;
   content_type: WorkspaceContentType;
-
   title: string;
   content_markdown: string;
   latex_code: string;
-
   citations: WorkspaceCitation[];
   warnings: string[];
   source_chunk_ids: string[];
   model: string;
-
   bibtex: string;
 }
 
@@ -301,18 +375,13 @@ export interface WorkspaceGenerationResponse {
 export interface WorkspaceVersion {
   id: string;
   workspace_id: string;
-
   content_type: WorkspaceContentType;
-
   content_markdown: string;
   latex_code: string;
-
   citations: WorkspaceCitation[];
   warnings: string[];
   source_chunk_ids: string[];
-
   bibtex: string;
-
   version: number;
   created_at: string;
 }

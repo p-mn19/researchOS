@@ -11,6 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_STORAGE_DIR = BASE_DIR / "uploads"
 DEFAULT_VECTOR_DIR = BASE_DIR / "vector_store"
 
+
 DEFAULT_STORAGE_DIR.mkdir(
     parents=True,
     exist_ok=True,
@@ -40,9 +41,9 @@ class Settings(BaseSettings):
     VECTOR_DIR: str = str(DEFAULT_VECTOR_DIR)
 
     GROQ_API_KEY: str = ""
-    # Comma-separated list used for round-robin request distribution.  The
-    # singular key remains supported so existing deployments keep working.
+
     GROQ_API_KEYS: str = ""
+
     GROQ_MODEL: str = (
         "openai/gpt-oss-20b"
     )
@@ -50,19 +51,34 @@ class Settings(BaseSettings):
     @property
     def groq_api_keys(self) -> tuple[str, ...]:
         """Return configured Groq keys in their configured rotation order."""
-        raw_keys = self.GROQ_API_KEYS.replace("\n", ",").replace(";", ",")
-        keys = [key.strip() for key in raw_keys.split(",") if key.strip()]
 
-        # GROQ_API_KEYS takes precedence. GROQ_API_KEY is the legacy fallback.
+        raw_keys = (
+            self.GROQ_API_KEYS
+            .replace("\n", ",")
+            .replace(";", ",")
+        )
+
+        keys = [
+            key.strip()
+            for key in raw_keys.split(",")
+            if key.strip()
+        ]
+
+        # GROQ_API_KEYS takes precedence.
+        # GROQ_API_KEY is the fallback.
         if not keys and self.GROQ_API_KEY.strip():
-            keys = [self.GROQ_API_KEY.strip()]
+            keys = [
+                self.GROQ_API_KEY.strip()
+            ]
 
-        # Avoid accidentally spending the same key twice when copied into both
-        # environment variables, while preserving the supplied order.
-        return tuple(dict.fromkeys(keys))
+        # Remove duplicate keys while
+        # preserving their order.
+        return tuple(
+            dict.fromkeys(keys)
+        )
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -70,8 +86,15 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-STORAGE_DIR = Path(settings.STORAGE_DIR)
-VECTOR_DIR = Path(settings.VECTOR_DIR)
+
+STORAGE_DIR = Path(
+    settings.STORAGE_DIR
+)
+
+VECTOR_DIR = Path(
+    settings.VECTOR_DIR
+)
+
 
 STORAGE_DIR.mkdir(
     parents=True,

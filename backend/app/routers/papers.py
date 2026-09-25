@@ -22,6 +22,7 @@ from app.services.extraction_service import (
 )
 from app.services.paper_service import (
     create_paper_record,
+    delete_paper,
     get_all_papers,
     get_paper_by_id,
     update_paper_status,
@@ -64,6 +65,28 @@ def list_papers():
 )
 def get_paper(paper_id: str):
     return get_paper_by_id(paper_id)
+
+
+@router.delete("/{paper_id}")
+def remove_paper(
+    paper_id: str,
+):
+    try:
+        return delete_paper(
+            paper_id
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Paper deletion failed: "
+                f"{str(exc)}"
+            ),
+        ) from exc
 
 
 @router.post("/{paper_id}/parse")
