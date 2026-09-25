@@ -475,6 +475,29 @@ export default function WorkspacePage() {
   }
 
 
+  function removeIdea(idea: ResearchIdea) {
+    const remainingIdeas = savedIdeas.filter(
+      (candidate) =>
+        candidate.title !== idea.title ||
+        candidate.problem_statement !== idea.problem_statement,
+    );
+
+    window.localStorage.setItem(
+      IDEA_STORAGE_KEY,
+      JSON.stringify(remainingIdeas),
+    );
+    setSavedIdeas(remainingIdeas);
+
+    if (
+      selectedIdea &&
+      selectedIdea.title === idea.title &&
+      selectedIdea.problem_statement === idea.problem_statement
+    ) {
+      setSelectedIdea(null);
+    }
+  }
+
+
   async function handleCreateWorkspace() {
     if (
       !selectedIdea ||
@@ -986,16 +1009,24 @@ export default function WorkspacePage() {
                           </p>
                         )}
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            selectIdea(idea)
-                          }
-                          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-violet-700"
-                        >
-                          <Check className="h-4 w-4" />
-                          Use this idea
-                        </button>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => selectIdea(idea)}
+                            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-violet-700"
+                          >
+                            <Check className="h-4 w-4" />
+                            Use this idea
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeIdea(idea)}
+                            aria-label={`Remove idea: ${idea.title}`}
+                            className="inline-flex items-center rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                          >
+                            Remove idea
+                          </button>
+                        </div>
                       </article>
                     );
                   })}

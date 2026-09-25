@@ -210,10 +210,16 @@ class LiteratureDiscoveryService:
             "https://api.openalex.org/works"
         )
 
+        # Comparison and paper recommendation queries contain many terms.
+        # OpenAlex's relevance-ranked search works better with a compact
+        # concept query than the full extracted text used to build them.
+        openalex_terms = self._tokenize(query)[:10]
+        openalex_query = " ".join(openalex_terms) or query
+
         params = {
             "search": (
                 self._build_search_query(
-                    query
+                    openalex_query
                 )
             ),
             "per-page": min(
@@ -310,10 +316,9 @@ class LiteratureDiscoveryService:
                             )
                         ),
                         title=self._clean_text(
-                            work.get(
-                                "title",
-                                "Untitled",
-                            )
+                            work.get("title")
+                            or work.get("display_name")
+                            or "Untitled",
                         ),
                         abstract=(
                             abstract
@@ -1044,8 +1049,13 @@ class LiteratureDiscoveryService:
         ) in scored:
 
             strong_match = (
-                len(matched_terms) >= 2
-                or score >= 10.0
+                # OpenAlex already returns candidates ranked by its search
+                # relevance. Retain those candidates for source-balanced
+                # recommendations even when their abstract is unavailable
+                # and the local keyword scorer cannot verify them.
+                paper.source == "OpenAlex"
+                or score >= 5.0
+                or len(matched_terms) >= 2
             )
 
             if not strong_match:
