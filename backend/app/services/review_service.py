@@ -1,17 +1,23 @@
+from __future__ import annotations
+
 import json
+import random
 import re
-import threading
+import time
 from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
 from fastapi import HTTPException
-from groq import Groq
 
 from app.config import settings
 from app.db import (
     chunks_collection,
     extractions_collection,
     papers_collection,
+)
+from app.services.groq_client import (
+    get_groq_client,
+    has_groq_api_keys,
 )
 
 
@@ -23,25 +29,45 @@ REVIEW_DIMENSIONS = [
     {
         "id": "clarity",
         "title": "Problem Clarity & Literature Coverage",
+        "description": (
+            "Assesses whether the paper clearly defines the research problem, "
+            "motivation, objectives, and relationship to relevant literature."
+        ),
     },
     {
         "id": "novelty",
         "title": "Novelty / Contribution",
+        "description": (
+            "Assesses whether the paper clearly states its contribution and "
+            "distinguishes it from related work. This does not independently "
+            "verify global novelty."
+        ),
     },
     {
         "id": "methodology",
         "title": "Method Justification & Completeness",
+        "description": (
+            "Assesses whether the methods are appropriate, justified, sufficiently "
+            "described, and reproducible from the supplied evidence."
+        ),
     },
     {
         "id": "evidence",
         "title": "Evidence & Results",
+        "description": (
+            "Assesses whether the datasets, experiments, metrics, comparisons, "
+            "and reported results support the paper's claims."
+        ),
     },
     {
         "id": "limitations",
         "title": "Limitations & Scope",
+        "description": (
+            "Assesses whether the paper acknowledges assumptions, limitations, "
+            "scope boundaries, risks, and future work."
+        ),
     },
 ]
-
 
 CONCERN_LEVELS = {
     "None",
@@ -50,111 +76,75 @@ CONCERN_LEVELS = {
     "Critical",
 }
 
-
 CONFIDENCE_LEVELS = {
     "Low",
     "Medium",
     "High",
 }
 
+SCORE_GUIDE = {
+    "1-2": "Very weak: little or no sufficient evidence was supplied for this dimension.",
+    "3-4": "Weak: major weaknesses or missing evidence materially affect the assessment.",
+    "5-6": "Mixed: some useful evidence is present, but important gaps or uncertainties remain.",
+    "7-8": "Generally solid: the paper is reasonably supported, with some areas to strengthen.",
+    "9-10": "Strong: the supplied evidence is clear, specific, and strongly supports this dimension.",
+}
 
-# ============================================================
-# GROQ CLIENTS
-# ============================================================
+CONCERN_GUIDE = {
+    "None": "No significant concern was identified from the supplied evidence.",
+    "Moderate": "A meaningful issue or uncertainty should be clarified or strengthened.",
+    "Major": "An important weakness or missing evidence materially affects the assessment.",
+    "Critical": "A fundamental issue exists, or essential information is unavailable for responsible assessment.",
+}
 
-# The config supports multiple Groq keys through:
-#
-# settings.groq_api_keys
-#
-# This property automatically handles:
-# - GROQ_API_KEYS
-# - GROQ_API_KEY fallback
-# - duplicate keys
-#
-# We create one Groq client per configured key.
+CONFIDENCE_GUIDE = {
+    "Low": "The supplied evidence is limited, ambiguous, or incomplete.",
+    "Medium": "The evidence reasonably supports the assessment, but uncertainty remains.",
+    "High": "The supplied paper evidence clearly supports the assessment.",
+}
 
-groq_clients: List[Groq] = []
-
-for api_key in settings.groq_api_keys:
-    groq_clients.append(
-        Groq(
-            api_key=api_key,
-            timeout=90.0,
-            max_retries=2,
-        )
-    )
-
-
-# Round-robin state.
-_groq_index = 0
-_groq_lock = threading.Lock()
-
-
-def _get_groq_client() -> Optional[Groq]:
-    """
-    Return the next configured Groq client using round-robin rotation.
-
-    Example with 5 keys:
-
-        request 1 -> key 1
-        request 2 -> key 2
-        request 3 -> key 3
-        request 4 -> key 4
-        request 5 -> key 5
-        request 6 -> key 1
-        ...
-
-    The lock protects the rotation counter when multiple
-    FastAPI requests are processed concurrently.
-    """
-
-    global _groq_index
-
-    if not groq_clients:
-        return None
-
-    with _groq_lock:
-        client = groq_clients[
-            _groq_index % len(groq_clients)
-        ]
-
-        _groq_index = (
-            _groq_index + 1
-        ) % len(groq_clients)
-
-        return client
+# Keep one review request comfortably below a low TPM allowance.
+MAX_REVIEW_CHUNKS = 6
+MAX_CHUNK_CHARS = 900
+MAX_REVIEW_CONTEXT_CHARS = 11_000
+MAX_REVIEW_OUTPUT_TOKENS = 1_600
+MAX_REVIEW_RETRIES = 3
 
 
 # ============================================================
 # HELPERS
 # ============================================================
 
+
 def _text(value: Any) -> str:
     if value is None:
         return ""
 
     if isinstance(value, list):
-        return ", ".join(
-            str(item)
-            for item in value
-            if item is not None
-        )
+        return ", ".join(str(item) for item in value if item is not None)
 
     if isinstance(value, dict):
-        return json.dumps(
-            value,
-            ensure_ascii=False,
-        )
+        return json.dumps(value, ensure_ascii=False)
 
-    return " ".join(
-        str(value).split()
-    ).strip()
+    return " ".join(str(value).split()).strip()
 
 
 def _clean_text(value: Any) -> str:
-    return " ".join(
-        _text(value).split()
-    ).strip()
+    return " ".join(_text(value).split()).strip()
+
+
+def _clip_text(value: Any, limit: int) -> str:
+    text = _clean_text(value)
+
+    if len(text) <= limit:
+        return text
+
+    clipped = text[:limit]
+
+    if " " in clipped:
+        clipped = clipped.rsplit(" ", 1)[0]
+
+    return f"{clipped}..."
 
 
 def _safe_list(value: Any) -> List[str]:
@@ -163,20 +153,15 @@ def _safe_list(value: Any) -> List[str]:
 
     if isinstance(value, str):
         value = value.strip()
-
-        if not value:
-            return []
-
-        return [value]
+        return [value] if value else []
 
     if not isinstance(value, list):
         return []
 
-    result = []
+    result: List[str] = []
 
     for item in value:
         cleaned = _clean_text(item)
-
         if cleaned:
             result.append(cleaned)
 
@@ -189,48 +174,44 @@ def _score(value: Any) -> str:
     except (TypeError, ValueError):
         numeric = 0
 
-    numeric = max(
-        1,
-        min(
-            10,
-            round(numeric),
-        ),
-    )
-
+    numeric = max(1, min(10, round(numeric)))
     return f"{numeric}/10"
 
 
 def _score_number(value: Any) -> int:
     try:
-        numeric = int(
-            round(
-                float(value)
-            )
-        )
+        numeric = int(round(float(value)))
     except (TypeError, ValueError):
         numeric = 1
 
-    return max(
-        1,
-        min(10, numeric),
-    )
+    return max(1, min(10, numeric))
 
 
-def _normalise_enum(
-    value: Any,
-    allowed: set,
-    fallback: str,
-) -> str:
+def _score_explanation(score: int) -> str:
+    if score <= 2:
+        return SCORE_GUIDE["1-2"]
+
+    if score <= 4:
+        return SCORE_GUIDE["3-4"]
+
+    if score <= 6:
+        return SCORE_GUIDE["5-6"]
+
+    if score <= 8:
+        return SCORE_GUIDE["7-8"]
+
+    return SCORE_GUIDE["9-10"]
+
+
+def _normalise_enum(value: Any, allowed: set[str], fallback: str) -> str:
     value = _clean_text(value)
 
     if not value:
         return fallback
 
-    # Exact match first.
     if value in allowed:
         return value
 
-    # Case-insensitive match.
     for item in allowed:
         if item.lower() == value.lower():
             return item
@@ -238,81 +219,60 @@ def _normalise_enum(
     return fallback
 
 
+def _is_rate_limit_or_too_large_error(exc: Exception) -> bool:
+    status_code = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+
+    return (
+        status_code in {413, 429}
+        or "rate limit" in text
+        or "rate_limit" in text
+        or "tokens per minute" in text
+        or "tpm" in text
+        or "request too large" in text
+        or "rate_limit_exceeded" in text
+        or "status code: 413" in text
+        or "status code: 429" in text
+    )
+
+
+def _retry_delay(attempt: int) -> float:
+    return min(20.0, 2.0**attempt) + random.uniform(0.0, 0.75)
+
+
 # ============================================================
 # PAPER LOOKUP
 # ============================================================
 
-def _find_paper(
-    paper_id: str,
-) -> Optional[dict]:
-    paper_id = str(
-        paper_id or ""
-    ).strip()
+
+def _find_paper(paper_id: str) -> Optional[dict]:
+    paper_id = str(paper_id or "").strip()
 
     if not paper_id:
         return None
 
     if ObjectId.is_valid(paper_id):
-        paper = papers_collection.find_one(
-            {
-                "_id": ObjectId(paper_id)
-            }
-        )
-
+        paper = papers_collection.find_one({"_id": ObjectId(paper_id)})
         if paper:
             return paper
 
     if paper_id.isdigit():
-        numeric_id = int(paper_id)
-
-        paper = papers_collection.find_one(
-            {
-                "_id": numeric_id
-            }
-        )
-
+        paper = papers_collection.find_one({"_id": int(paper_id)})
         if paper:
             return paper
 
-        paper = papers_collection.find_one(
-            {
-                "id": paper_id
-            }
-        )
-
-        if paper:
-            return paper
-
-    return None
+    return papers_collection.find_one({"id": paper_id})
 
 
-def _find_extraction(
-    paper_id: str,
-    paper: dict,
-) -> dict:
-
-    candidates = [
-        paper_id,
-        str(
-            paper.get("_id", "")
-        ),
-    ]
-
-    candidates = [
-        value
-        for value in candidates
-        if value
-    ]
+def _find_extraction(paper_id: str, paper: dict) -> dict:
+    candidates = [paper_id, str(paper.get("_id", ""))]
+    candidates = [value for value in candidates if value]
 
     if not candidates:
         return {}
 
     extraction = extractions_collection.find_one(
-        {
-            "paper_id": {
-                "$in": candidates
-            }
-        }
+        {"paper_id": {"$in": candidates}},
     )
 
     return extraction or {}
@@ -322,22 +282,17 @@ def _find_extraction(
 # CHUNK RETRIEVAL
 # ============================================================
 
-def _get_paper_chunks(
-    paper_id: str,
-) -> List[dict]:
 
-    paper_id = str(
-        paper_id or ""
-    ).strip()
+def _get_paper_chunks(paper_id: str) -> List[dict]:
+    """Retrieve a small, stable sample of paper chunks."""
+    paper_id = str(paper_id or "").strip()
 
     if not paper_id:
         return []
 
-    chunks = list(
+    return list(
         chunks_collection.find(
-            {
-                "paper_id": paper_id
-            },
+            {"paper_id": paper_id},
             {
                 "_id": 0,
                 "text": 1,
@@ -345,86 +300,55 @@ def _get_paper_chunks(
                 "page_number": 1,
                 "section_title": 1,
             },
-        ).sort(
-            [
-                ("page", 1),
-                ("page_number", 1),
-            ]
         )
+        .sort([("page", 1), ("page_number", 1)])
+        .limit(MAX_REVIEW_CHUNKS),
     )
-
-    return chunks
 
 
 # ============================================================
 # REVIEW CONTEXT
 # ============================================================
 
+
 def _build_review_context(
     paper: dict,
     extraction: dict,
     chunks: List[dict],
 ) -> str:
-
     title = (
-        _clean_text(
-            paper.get("title")
-        )
-        or _clean_text(
-            paper.get("filename")
-        )
+        _clean_text(paper.get("title"))
+        or _clean_text(paper.get("filename"))
         or "Untitled paper"
     )
 
-    abstract = _clean_text(
-        paper.get("abstract")
+    abstract = _clip_text(paper.get("abstract"), 1_500)
+    objective = _clip_text(extraction.get("objective") or paper.get("objective"), 650)
+    methodology = _clip_text(
+        extraction.get("methodology") or paper.get("methodology"),
+        850,
     )
-
-    objective = _clean_text(
-        extraction.get("objective")
-        or paper.get("objective")
-    )
-
-    methodology = _clean_text(
-        extraction.get("methodology")
-        or paper.get("methodology")
-    )
-
-    dataset = _clean_text(
-        extraction.get("dataset")
-        or paper.get("dataset")
-    )
-
-    metrics = _clean_text(
+    dataset = _clip_text(extraction.get("dataset") or paper.get("dataset"), 400)
+    metrics = _clip_text(
         extraction.get("evaluation_metric")
         or extraction.get("metrics")
-        or paper.get("evaluation_metric")
+        or paper.get("evaluation_metric"),
+        400,
     )
-
-    findings = _clean_text(
-        extraction.get("findings")
-        or paper.get("findings")
+    findings = _clip_text(extraction.get("findings") or paper.get("findings"), 850)
+    limitations = _clip_text(
+        extraction.get("limitations") or paper.get("limitations"),
+        650,
     )
-
-    limitations = _clean_text(
-        extraction.get("limitations")
-        or paper.get("limitations")
+    future_work = _clip_text(
+        extraction.get("future_work") or paper.get("future_work"),
+        500,
     )
-
-    future_work = _clean_text(
-        extraction.get("future_work")
-        or paper.get("future_work")
+    research_gap = _clip_text(
+        extraction.get("research_gap") or paper.get("research_gap"),
+        500,
     )
-
-    research_gap = _clean_text(
-        extraction.get("research_gap")
-        or paper.get("research_gap")
-    )
-
-    keywords = _safe_list(
-        extraction.get("keywords")
-        or paper.get("keywords")
-    )
+    keywords = _safe_list(extraction.get("keywords") or paper.get("keywords"))
 
     parts = [
         "=== PAPER METADATA ===",
@@ -442,47 +366,34 @@ def _build_review_context(
         f"Limitations: {limitations or '[Not available]'}",
         f"Future Work: {future_work or '[Not available]'}",
         f"Research Gap: {research_gap or '[Not available]'}",
-        f"Keywords: {', '.join(keywords) or '[Not available]'}",
+        f"Keywords: {', '.join(keywords[:12]) or '[Not available]'}",
         "",
-        "=== SOURCE PAPER CHUNKS ===",
+        "=== SELECTED SOURCE PASSAGES ===",
     ]
 
-    if chunks:
-        for index, chunk in enumerate(
-            chunks,
-            start=1,
-        ):
-            text = _clean_text(
-                chunk.get("text")
-            )
+    used_chars = len("\n".join(parts))
+    included_passages = 0
 
-            if not text:
-                continue
+    for index, chunk in enumerate(chunks, start=1):
+        text = _clip_text(chunk.get("text"), MAX_CHUNK_CHARS)
 
-            page = (
-                chunk.get("page")
-                or chunk.get("page_number")
-                or "?"
-            )
+        if not text:
+            continue
 
-            section = _clean_text(
-                chunk.get("section_title")
-            )
+        page = chunk.get("page") or chunk.get("page_number") or "?"
+        section = _clean_text(chunk.get("section_title"))
+        location = f"Page {page}" if not section else f"Page {page}, Section: {section}"
+        block = f"\n--- Passage {index} ({location}) ---\n{text}"
 
-            location = (
-                f"Page {page}"
-                if not section
-                else f"Page {page}, Section: {section}"
-            )
+        if used_chars + len(block) > MAX_REVIEW_CONTEXT_CHARS:
+            break
 
-            parts.append(
-                f"\n--- Chunk {index} ({location}) ---\n"
-                f"{text}"
-            )
-    else:
-        parts.append(
-            "[No parsed paper chunks were found.]"
-        )
+        parts.append(block)
+        used_chars += len(block)
+        included_passages += 1
+
+    if included_passages == 0:
+        parts.append("[No parsed paper passages were available.]")
 
     return "\n".join(parts)
 
@@ -494,101 +405,37 @@ def _build_review_context(
 SYSTEM_PROMPT = """
 You are the ResearchOS academic review engine.
 
-Your task is to analyse an academic research paper and produce a
-structured review.
+Analyse the supplied paper evidence and return a compact, structured
+academic review. Use only the supplied information.
 
-IMPORTANT:
+Rules:
+1. Do not invent facts, citations, datasets, results, or missing details.
+2. Distinguish “not reported” from “poor quality”.
+3. Do not make a publication decision.
+4. Novelty cannot be proven from one paper alone; assess only whether
+   the contribution is clearly stated and differentiated in the evidence.
+5. Return valid JSON only. Do not use Markdown or code fences.
+6. Keep the complete response concise. Each evidence and suggestion field
+   should be one or two sentences.
 
-Use ONLY the supplied paper information.
+Evaluate exactly these dimensions:
+- clarity: Problem Clarity & Literature Coverage
+- novelty: Novelty / Contribution
+- methodology: Method Justification & Completeness
+- evidence: Evidence & Results
+- limitations: Limitations & Scope
 
-Do not invent facts.
-Do not assume missing information exists.
-Do not treat typical academic conventions as evidence.
-Do not fabricate citations.
-Do not claim that a paper is novel merely because its methodology
-looks different.
-Do not make a publication decision.
+For each dimension provide:
+- score: 1 to 10
+- concern: None, Moderate, Major, or Critical
+- confidence: Low, Medium, or High
+- evidence: concise, grounded rationale
+- suggestion: one actionable improvement
 
-The review is decision support for the researcher, NOT a real
-peer-review decision.
-
-Evaluate exactly these five dimensions:
-
-1. Problem Clarity & Literature Coverage
-2. Novelty / Contribution
-3. Method Justification & Completeness
-4. Evidence & Results
-5. Limitations & Scope
-
-For every dimension:
-
-- score from 1 to 10
-- assign a concern level:
-  None
-  Moderate
-  Major
-  Critical
-- provide evidence grounded in the supplied paper
-- provide one actionable suggestion
-- provide confidence:
-  Low
-  Medium
-  High
-
-Interpret concern levels as follows:
-
-None:
-The supplied evidence does not reveal a significant concern for
-this dimension.
-
-Moderate:
-There is a meaningful issue, uncertainty, or area that should be
-clarified or strengthened.
-
-Major:
-There is an important weakness, missing evidence, or methodological
-issue that materially affects the assessment.
-
-Critical:
-The supplied evidence reveals a fundamental problem or there is
-not enough essential information to responsibly assess a key part
-of the dimension.
-
-IMPORTANT:
-Missing information should NOT automatically receive Critical.
-Distinguish between "not reported" and "poor quality".
-
-Novelty:
-Novelty cannot be proven from this paper alone. Assess whether the
-paper clearly identifies its contribution and differentiates itself
-from related work based only on supplied evidence.
-
-Literature coverage:
-Do not assume that the literature review is comprehensive simply
-because an abstract exists.
-
-Methodology:
-Consider whether the method is sufficiently described, justified,
-reproducible, and appropriate for the stated objective.
-
-Evidence & Results:
-Consider whether experiments, metrics, comparisons, results, and
-interpretation provide sufficient evidence for the stated claims.
-
-Limitations & Scope:
-Consider whether limitations, assumptions, scope, and future work
-are explicitly discussed and whether the conclusions remain within
-the evidence.
-
-Return valid JSON only.
-
-Do not use Markdown fences.
-
-Return exactly this structure:
-
+Return exactly this JSON shape:
 {
   "overall_score": 7.5,
-  "overall_assessment": "...",
+  "overall_assessment": "One concise paragraph.",
   "strengths": ["...", "..."],
   "weaknesses": ["...", "..."],
   "missing_information": ["...", "..."],
@@ -597,7 +444,7 @@ Return exactly this structure:
       "id": "clarity",
       "title": "Problem Clarity & Literature Coverage",
       "score": 8,
-      "concern": "None",
+      "concern": "Moderate",
       "confidence": "High",
       "evidence": "...",
       "suggestion": "..."
@@ -605,21 +452,8 @@ Return exactly this structure:
   ]
 }
 
-The dimensions array MUST contain exactly five items using the IDs:
-
-clarity
-novelty
-methodology
-evidence
-limitations
-
-Keep evidence concise but specific.
-
-When possible, mention concrete details such as datasets,
-algorithms, sample sizes, metrics, experiments, or reported
-limitations.
-
-Do not quote long passages.
+The dimensions array must contain exactly five objects with IDs:
+clarity, novelty, methodology, evidence, limitations.
 """.strip()
 
 
@@ -627,47 +461,23 @@ Do not quote long passages.
 # JSON EXTRACTION
 # ============================================================
 
-def _parse_json(
-    content: str,
-) -> Dict[str, Any]:
 
-    content = (
-        content or ""
-    ).strip()
+def _parse_json(content: str) -> Dict[str, Any]:
+    content = (content or "").strip()
 
     if not content:
         return {}
 
-    # Remove Markdown fences if the model ignores the instruction.
     if content.startswith("```"):
-        content = re.sub(
-            r"^```(?:json)?",
-            "",
-            content,
-            flags=re.IGNORECASE,
-        )
-
-        content = re.sub(
-            r"```$",
-            "",
-            content,
-        ).strip()
+        content = re.sub(r"^```(?:json)?", "", content, flags=re.IGNORECASE)
+        content = re.sub(r"```$", "", content).strip()
 
     try:
-        parsed = json.loads(
-            content
-        )
-
-        return (
-            parsed
-            if isinstance(parsed, dict)
-            else {}
-        )
-
+        parsed = json.loads(content)
+        return parsed if isinstance(parsed, dict) else {}
     except json.JSONDecodeError:
         pass
 
-    # Try extracting the JSON object.
     start = content.find("{")
     end = content.rfind("}")
 
@@ -675,18 +485,8 @@ def _parse_json(
         return {}
 
     try:
-        parsed = json.loads(
-            content[
-                start:end + 1
-            ]
-        )
-
-        return (
-            parsed
-            if isinstance(parsed, dict)
-            else {}
-        )
-
+        parsed = json.loads(content[start : end + 1])
+        return parsed if isinstance(parsed, dict) else {}
     except json.JSONDecodeError:
         return {}
 
@@ -695,44 +495,40 @@ def _parse_json(
 # REVIEW NORMALISATION
 # ============================================================
 
+
 def _normalise_dimension(
     raw: Dict[str, Any],
     expected: Dict[str, str],
 ) -> Dict[str, Any]:
+    numeric_score = _score_number(raw.get("score"))
+    concern = _normalise_enum(
+        raw.get("concern"),
+        CONCERN_LEVELS,
+        "Moderate",
+    )
+    confidence = _normalise_enum(
+        raw.get("confidence"),
+        CONFIDENCE_LEVELS,
+        "Medium",
+    )
 
     return {
         "id": expected["id"],
         "title": expected["title"],
-        "score": _score(
-            raw.get("score")
-        ),
-        "concern": _normalise_enum(
-            raw.get("concern"),
-            CONCERN_LEVELS,
-            "Moderate",
-        ),
-        "confidence": _normalise_enum(
-            raw.get("confidence"),
-            CONFIDENCE_LEVELS,
-            "Medium",
-        ),
+        "description": expected["description"],
+        "score": f"{numeric_score}/10",
+        "scoreExplanation": _score_explanation(numeric_score),
+        "concern": concern,
+        "concernExplanation": CONCERN_GUIDE[concern],
+        "confidence": confidence,
+        "confidenceExplanation": CONFIDENCE_GUIDE[confidence],
         "evidence": (
-            _clean_text(
-                raw.get("evidence")
-            )
-            or (
-                "The supplied paper evidence was insufficient "
-                "to provide a detailed assessment."
-            )
+            _clean_text(raw.get("evidence"))
+            or "The supplied paper evidence was insufficient to provide a detailed assessment."
         ),
         "suggestion": (
-            _clean_text(
-                raw.get("suggestion")
-            )
-            or (
-                "Provide additional evidence or clarification "
-                "for this dimension."
-            )
+            _clean_text(raw.get("suggestion"))
+            or "Provide additional evidence or clarification for this dimension."
         ),
     }
 
@@ -742,124 +538,63 @@ def _normalise_review(
     paper_id: str,
     title: str,
 ) -> Dict[str, Any]:
+    raw_dimensions = raw.get("dimensions")
 
-    raw_dimensions = raw.get(
-        "dimensions"
-    )
-
-    if not isinstance(
-        raw_dimensions,
-        list,
-    ):
+    if not isinstance(raw_dimensions, list):
         raw_dimensions = []
 
-    by_id = {}
+    by_id: Dict[str, Dict[str, Any]] = {}
 
     for item in raw_dimensions:
-        if not isinstance(
-            item,
-            dict,
-        ):
+        if not isinstance(item, dict):
             continue
 
-        item_id = _clean_text(
-            item.get("id")
-        ).lower()
-
+        item_id = _clean_text(item.get("id")).lower()
         if item_id:
             by_id[item_id] = item
 
-    dimensions = []
-
-    for expected in REVIEW_DIMENSIONS:
-        raw_dimension = by_id.get(
-            expected["id"],
-            {},
-        )
-
-        dimensions.append(
-            _normalise_dimension(
-                raw_dimension,
-                expected,
-            )
-        )
-
-    scores = [
-        _score_number(
-            dimension["score"]
-            .replace("/10", "")
-        )
-        for dimension in dimensions
+    dimensions = [
+        _normalise_dimension(by_id.get(expected["id"], {}), expected)
+        for expected in REVIEW_DIMENSIONS
     ]
 
-    average_score = (
-        sum(scores) / len(scores)
-        if scores
-        else 0
-    )
-
-    llm_overall_score = raw.get(
-        "overall_score"
-    )
+    scores = [
+        _score_number(dimension["score"].replace("/10", ""))
+        for dimension in dimensions
+    ]
+    average_score = sum(scores) / len(scores) if scores else 0
 
     try:
-        overall_score = float(
-            llm_overall_score
-        )
-
+        overall_score = float(raw.get("overall_score"))
         if not 1 <= overall_score <= 10:
             raise ValueError
+    except (TypeError, ValueError):
+        overall_score = round(average_score, 1)
 
-    except (
-        TypeError,
-        ValueError,
-    ):
-        overall_score = round(
-            average_score,
-            1,
-        )
-
-    overall_assessment = (
-        _clean_text(
-            raw.get(
-                "overall_assessment"
-            )
-        )
-        or (
-            "The review was generated from the evidence available "
-            "in the supplied paper."
-        )
-    )
-
-    strengths = _safe_list(
-        raw.get("strengths")
-    )
-
-    weaknesses = _safe_list(
-        raw.get("weaknesses")
-    )
-
-    missing_information = _safe_list(
-        raw.get("missing_information")
+    overall_assessment = _clean_text(raw.get("overall_assessment")) or (
+        "The review was generated from the evidence available in the supplied paper."
     )
 
     return {
         "paperId": paper_id,
         "paperTitle": title,
-        "overallScore": (
-            f"{overall_score:.1f}/10"
-        ),
+        "overallScore": f"{overall_score:.1f}/10",
         "overallAssessment": overall_assessment,
         "summary": overall_assessment,
-        "strengths": strengths,
-        "weaknesses": weaknesses,
-        "missingInformation": missing_information,
+        "strengths": _safe_list(raw.get("strengths")),
+        "weaknesses": _safe_list(raw.get("weaknesses")),
+        "missingInformation": _safe_list(raw.get("missing_information")),
         "dimensions": dimensions,
-        "model": getattr(
-            settings,
-            "GROQ_MODEL",
-            "",
-        ),
+        "guidance": {
+            "scoreRanges": SCORE_GUIDE,
+            "concerns": CONCERN_GUIDE,
+            "confidence": CONFIDENCE_GUIDE,
+            "note": (
+                "Not reported does not automatically mean poor quality. "
+                "A lower confidence or concern level can reflect limited or ambiguous supplied evidence."
+            ),
+        },
+        "model": getattr(settings, "GROQ_MODEL", ""),
     }
 
 
@@ -867,140 +602,120 @@ def _normalise_review(
 # MODEL CALL
 # ============================================================
 
-def _call_review_model(
-    context: str,
-) -> Dict[str, Any]:
 
-    client = _get_groq_client()
-
-    if client is None:
+def _call_review_model(context: str) -> Dict[str, Any]:
+    if not has_groq_api_keys():
         raise HTTPException(
             status_code=503,
-            detail=(
-                "No Groq API key is configured. "
-                "Review generation requires Groq."
-            ),
+            detail="No Groq API key is configured. Review generation requires Groq.",
         )
 
-    model = getattr(
-        settings,
-        "GROQ_MODEL",
-        "openai/gpt-oss-20b",
-    )
+    model = getattr(settings, "GROQ_MODEL", "openai/gpt-oss-20b")
+    last_error: Optional[Exception] = None
 
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT,
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        "Analyse the following paper.\n\n"
-                        + context
+    for attempt in range(MAX_REVIEW_RETRIES):
+        client = get_groq_client(timeout=90.0, max_retries=1)
+
+        if client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="No Groq API key is configured. Review generation requires Groq.",
+            )
+
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": "Analyse this paper evidence:\n\n" + context,
+                    },
+                ],
+                temperature=0.1,
+                max_tokens=MAX_REVIEW_OUTPUT_TOKENS,
+            )
+
+            content = ""
+            if response.choices:
+                content = response.choices[0].message.content or ""
+
+            parsed = _parse_json(content)
+
+            if not parsed:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Review model returned invalid JSON.",
+                )
+
+            return parsed
+
+        except HTTPException:
+            raise
+
+        except Exception as exc:
+            last_error = exc
+
+            if _is_rate_limit_or_too_large_error(exc) and attempt < MAX_REVIEW_RETRIES - 1:
+                time.sleep(_retry_delay(attempt))
+                continue
+
+            if _is_rate_limit_or_too_large_error(exc):
+                raise HTTPException(
+                    status_code=429,
+                    detail=(
+                        "Review generation is temporarily rate-limited. Wait about a minute "
+                        "and try again. The review request has been reduced to a compact "
+                        "evidence context."
                     ),
-                },
-            ],
-            temperature=0.1,
-            max_tokens=5000,
-        )
+                ) from exc
 
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Review model request failed: "
-                f"{str(exc)}"
-            ),
-        ) from exc
+            raise HTTPException(
+                status_code=502,
+                detail=f"Review model request failed: {str(exc)}",
+            ) from exc
 
-    content = ""
-
-    if response.choices:
-        content = (
-            response.choices[0]
-            .message
-            .content
-            or ""
-        )
-
-    parsed = _parse_json(
-        content
+    raise HTTPException(
+        status_code=429,
+        detail=(
+            "Review generation is temporarily rate-limited. "
+            f"Last error: {str(last_error) if last_error else 'Unknown error'}"
+        ),
     )
-
-    if not parsed:
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Review model returned invalid JSON."
-            ),
-        )
-
-    return parsed
 
 
 # ============================================================
 # PUBLIC SERVICE
 # ============================================================
 
-def generate_review(
-    paper_id: str,
-) -> Dict[str, Any]:
 
-    paper_id = str(
-        paper_id or ""
-    ).strip()
+def generate_review(paper_id: str) -> Dict[str, Any]:
+    paper_id = str(paper_id or "").strip()
 
     if not paper_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Paper ID is required.",
-        )
+        raise HTTPException(status_code=400, detail="Paper ID is required.")
 
-    paper = _find_paper(
-        paper_id
-    )
+    paper = _find_paper(paper_id)
 
     if not paper:
         raise HTTPException(
             status_code=404,
-            detail=(
-                f"Paper not found for ID: "
-                f"{paper_id}"
-            ),
+            detail=f"Paper not found for ID: {paper_id}",
         )
 
-    extraction = _find_extraction(
-        paper_id,
-        paper,
-    )
-
-    chunks = _get_paper_chunks(
-        paper_id
-    )
-
+    extraction = _find_extraction(paper_id, paper)
+    chunks = _get_paper_chunks(paper_id)
     title = (
-        _clean_text(
-            paper.get("title")
-        )
-        or _clean_text(
-            paper.get("filename")
-        )
+        _clean_text(paper.get("title"))
+        or _clean_text(paper.get("filename"))
         or "Untitled paper"
     )
-
     context = _build_review_context(
         paper=paper,
         extraction=extraction,
         chunks=chunks,
     )
-
-    raw_review = _call_review_model(
-        context
-    )
+    raw_review = _call_review_model(context)
 
     return _normalise_review(
         raw=raw_review,
