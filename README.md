@@ -182,13 +182,7 @@ and Chroma if deploying it.
 ### LaTeX compiler
 
 LaTeX compilation uses Tectonic in untrusted mode with a 300-second timeout
-and 250,000-character limits for both LaTeX and BibTeX input. Its executable
-is currently configured as:
-
-```text
-C:\Users\Prem\tools\tectonic\tectonic.exe
-```
-
+and 250,000-character limits for both LaTeX and BibTeX input. 
 Update `TECTONIC_EXECUTABLE` in `backend/app/services/latex_compile_service.py`
 to match the machine running the backend, or make that executable available at
 the configured path. The compiler writes only to a newly created temporary
