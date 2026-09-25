@@ -7,6 +7,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 from app.config import settings
 from app.services.groq_client import get_groq_client, has_groq_api_keys
+from app.services.pdf_parser import extract_authors_from_front_matter
 from app.db import (
     extractions_collection,
     papers_collection,
@@ -1083,6 +1084,27 @@ def extract_paper_content(
                 "Run parsing before extraction."
             ),
         )
+
+    # Extraction normally follows parsing, but retain this fallback for
+    # callers that invoke the extraction service directly. References are
+    # generated from the paper record, so authors must be saved before the
+    # structured extraction can be used by a workspace.
+    authors = paper.get("authors") or []
+
+    if not authors:
+        extracted_authors = extract_authors_from_front_matter(text)
+
+        if extracted_authors:
+            papers_collection.update_one(
+                {"_id": object_id},
+                {
+                    "$set": {
+                        "authors": extracted_authors,
+                        "updated_at": datetime.utcnow(),
+                    }
+                },
+            )
+            paper["authors"] = extracted_authors
 
     print(
         "\n"
