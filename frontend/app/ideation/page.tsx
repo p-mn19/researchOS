@@ -155,37 +155,23 @@ export default function IdeationPage() {
   }
 
 
-  function saveAllGeneratedIdeas(
-    ideas: ResearchIdea[],
-  ) {
-    if (ideas.length === 0) {
-      return;
+  function saveIdea(idea: ResearchIdea) {
+    const existingIdeas = getStoredIdeas();
+    const alreadySaved = existingIdeas.some(
+      (candidate) =>
+        candidate.title === idea.title &&
+        candidate.problem_statement === idea.problem_statement,
+    );
+
+    if (!alreadySaved) {
+      const updatedIdeas = [idea, ...existingIdeas];
+      saveIdeas(updatedIdeas);
+      setSavedIdeas(updatedIdeas);
     }
 
-    const existingIdeas = getStoredIdeas();
-
-    const mergedIdeas = [
-      ...ideas,
-      ...existingIdeas,
-    ].filter((idea, index, allIdeas) => {
-      return (
-        allIdeas.findIndex(
-          (candidate) =>
-            candidate.title === idea.title &&
-            candidate.problem_statement ===
-              idea.problem_statement,
-        ) === index
-      );
-    });
-
-    saveIdeas(mergedIdeas);
-    setSavedIdeas(mergedIdeas);
-
-    setNotice(
-      `${ideas.length} generated idea${
-        ideas.length === 1 ? "" : "s"
-      } saved for the Research Workspace.`,
-    );
+    setNotice(alreadySaved
+      ? "This idea is already saved in Research Workspace."
+      : "Idea saved. You can find it under Select research idea in Research Workspace.");
   }
 
 
@@ -233,9 +219,7 @@ export default function IdeationPage() {
 
       setResult(response);
 
-      if (response.ideas.length > 0) {
-        saveAllGeneratedIdeas(response.ideas);
-      } else {
+      if (response.ideas.length === 0) {
         setNotice(
           "Analysis completed, but no usable candidate ideas were returned. Check whether selected papers have limitations, future-work, and methodology extraction fields.",
         );
@@ -564,20 +548,6 @@ export default function IdeationPage() {
                   </p>
                 </div>
 
-                {result.ideas.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      saveAllGeneratedIdeas(
-                        result.ideas,
-                      )
-                    }
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-800 transition hover:bg-violet-100"
-                  >
-                    <FolderPlus className="h-4 w-4" />
-                    Save all ideas
-                  </button>
-                )}
               </div>
 
               <div className="space-y-5">
@@ -608,16 +578,30 @@ export default function IdeationPage() {
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            sendIdeaToWorkspace(idea)
-                          }
-                          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
-                        >
-                          <FolderPlus className="h-4 w-4" />
-                          Use in Workspace
-                        </button>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => saveIdea(idea)}
+                            disabled={savedIdeas.some((candidate) =>
+                              candidate.title === idea.title &&
+                              candidate.problem_statement === idea.problem_statement
+                            )}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-4 py-2 text-sm font-medium text-violet-800 transition hover:bg-violet-50 disabled:cursor-default disabled:border-emerald-200 disabled:bg-emerald-50 disabled:text-emerald-700"
+                          >
+                            {savedIdeas.some((candidate) =>
+                              candidate.title === idea.title &&
+                              candidate.problem_statement === idea.problem_statement
+                            ) ? "Saved" : "Save idea"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => sendIdeaToWorkspace(idea)}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+                          >
+                            <FolderPlus className="h-4 w-4" />
+                            Use in Workspace
+                          </button>
+                        </div>
                       </div>
 
                       <div className="mt-5 grid gap-4 lg:grid-cols-2">
