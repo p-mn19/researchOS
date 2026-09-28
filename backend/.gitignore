@@ -30,3 +30,8 @@ Thumbs.db
 node_modules/
 .next/
 out/
+
+# ChromaDB local vector store
+backend/vector_store/
+
+backend/vector_store/chroma.sqlite3
