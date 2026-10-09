@@ -3,13 +3,12 @@ from __future__ import annotations
 import re
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from bson import ObjectId
 from fastapi import HTTPException
+
 from app.config import settings
-from app.services.citation_service import build_references_bib
-from app.services.groq_client import get_groq_client, has_groq_api_keys
 from app.db import (
     extractions_collection,
     papers_collection,
@@ -26,10 +25,19 @@ from app.schemas.workspace import (
     WorkspaceVersionCreate,
     WorkspaceVersionResponse,
 )
+from app.services.citation_service import build_references_bib
+from app.services.groq_client import (
+    get_groq_client,
+    has_groq_api_keys,
+)
 from app.services.search_service import semantic_search
 
+DocumentFormat = Literal["normal", "ieee"]
+
+DEFAULT_DOCUMENT_FORMAT: DocumentFormat = "normal"
 
 CONTENT_TITLES = {
+    "introduction": "Introduction",
     "research_problem": "Research Problem",
     "research_objectives": "Research Objectives",
     "research_questions": "Research Questions",
@@ -42,10 +50,14 @@ CONTENT_TITLES = {
     "expected_contributions": "Expected Contributions",
     "limitations_and_scope": "Limitations and Scope",
     "abstract_draft": "Abstract",
+    "conclusion": "Conclusion",
 }
 
-
 CONTENT_QUERIES = {
+    "introduction": (
+        "research problem objective methodology findings "
+        "limitations future work research gap"
+    ),
     "research_problem": (
         "research problem objective limitations future work research gap"
     ),
@@ -82,17 +94,17 @@ CONTENT_QUERIES = {
     "abstract_draft": (
         "objective methodology dataset findings limitations research gap"
     ),
+    "conclusion": (
+        "objective methodology findings limitations future work research gap"
+    ),
 }
 
 MAX_PAPER_CONTEXT_CHARS = 3000
 MAX_CHUNK_CONTEXT_CHARS = 2500
 MAX_INSTRUCTION_CHARS = 600
 
-# Output-token budget for one generated workspace section.
-# This is deliberately separate from the model's own maximum.
 MIN_GENERATION_TOKENS = 1200
 MAX_GENERATION_TOKENS = 8000
-
 
 SYSTEM_PROMPT = """
 You are ResearchOS Workspace, an evidence-grounded academic writing assistant.
@@ -116,6 +128,21 @@ Rules:
 13. Complete every sentence and paragraph. Never end the response mid-sentence.
 14. Meet the requested target length as closely as the available evidence permits.
 """.strip()
+
+
+def _normalise_document_format(
+    value: Any,
+) -> DocumentFormat:
+    """
+    Return a valid document format.
+
+    Existing workspace/version documents may not have this field, so
+    missing or invalid values default to the normal single-column layout.
+    """
+    if value == "ieee":
+        return "ieee"
+
+    return DEFAULT_DOCUMENT_FORMAT
 
 
 def _clean_text(value: Any) -> str:
@@ -164,7 +191,9 @@ def _safe_list(value: Any) -> List[str]:
     ]
 
 
-def _validate_workspace_id(workspace_id: str) -> ObjectId:
+def _validate_workspace_id(
+    workspace_id: str,
+) -> ObjectId:
     workspace_id = str(workspace_id or "").strip()
 
     if not ObjectId.is_valid(workspace_id):
@@ -176,7 +205,9 @@ def _validate_workspace_id(workspace_id: str) -> ObjectId:
     return ObjectId(workspace_id)
 
 
-def _normalise_paper_ids(paper_ids: List[str]) -> List[str]:
+def _normalise_paper_ids(
+    paper_ids: List[str],
+) -> List[str]:
     return list(
         dict.fromkeys(
             str(paper_id).strip()
@@ -186,7 +217,9 @@ def _normalise_paper_ids(paper_ids: List[str]) -> List[str]:
     )
 
 
-def _paper_query(paper_ids: List[str]) -> Dict[str, Any]:
+def _paper_query(
+    paper_ids: List[str],
+) -> Dict[str, Any]:
     object_ids = [
         ObjectId(paper_id)
         for paper_id in paper_ids
@@ -274,7 +307,9 @@ def _citation_key(
     )
 
 
-def _serialize_workspace(document: Dict[str, Any]) -> Dict[str, Any]:
+def _serialize_workspace(
+    document: Dict[str, Any],
+) -> Dict[str, Any]:
     return {
         "id": str(document["_id"]),
         "title": document.get("title", ""),
@@ -285,15 +320,21 @@ def _serialize_workspace(document: Dict[str, Any]) -> Dict[str, Any]:
             "research_objective",
             "",
         ),
+        "document_format": _normalise_document_format(
+            document.get("document_format")
+        ),
         "created_at": document.get("created_at"),
         "updated_at": document.get("updated_at"),
     }
 
 
-def _serialize_version(document: Dict[str, Any]) -> Dict[str, Any]:
+def _serialize_version(
+    document: Dict[str, Any],
+) -> Dict[str, Any]:
     citations = [
         WorkspaceCitation.model_validate(citation)
         for citation in document.get("citations", [])
+        if isinstance(citation, dict)
     ]
 
     return {
@@ -308,12 +349,19 @@ def _serialize_version(document: Dict[str, Any]) -> Dict[str, Any]:
             "latex_code",
             "",
         ),
-        "citations": document.get("citations", []),
-        "bibtex": build_references_bib(citations),
+        "citations": [
+            citation.model_dump()
+            for citation in citations
+        ],
+        "bibtex": document.get("bibtex")
+        or build_references_bib(citations),
         "warnings": document.get("warnings", []),
         "source_chunk_ids": document.get(
             "source_chunk_ids",
             [],
+        ),
+        "document_format": _normalise_document_format(
+            document.get("document_format")
         ),
         "version": document.get("version", 1),
         "created_at": document.get("created_at"),
@@ -369,6 +417,9 @@ def create_workspace(
         "idea": payload.idea.model_dump(),
         "research_objective": (
             payload.research_objective.strip()
+        ),
+        "document_format": _normalise_document_format(
+            payload.document_format
         ),
         "created_at": now,
         "updated_at": now,
@@ -490,6 +541,11 @@ def update_workspace(
 
     if "idea" in updates and updates["idea"] is not None:
         updates["idea"] = payload.idea.model_dump()
+
+    if "document_format" in updates:
+        updates["document_format"] = _normalise_document_format(
+            updates["document_format"]
+        )
 
     for field in (
         "title",
@@ -877,8 +933,9 @@ def _latex_escape(text: str) -> str:
     return text
 
 
-def _markdown_inline_to_latex(text: str) -> str:
-    """Escape text and translate Markdown bold markers to LaTeX."""
+def _markdown_inline_to_latex(
+    text: str,
+) -> str:
     escaped = _latex_escape(text)
 
     return re.sub(
@@ -892,7 +949,6 @@ def _is_redundant_section_title(
     paragraph: str,
     title: str,
 ) -> bool:
-    """Detect a Markdown title that repeats the generated section title."""
     candidate = paragraph.strip()
     candidate = re.sub(r"^#{1,6}\s+", "", candidate)
 
@@ -901,11 +957,12 @@ def _is_redundant_section_title(
     if bold_match:
         candidate = bold_match.group(1)
 
-    normalise = lambda value: re.sub(
-        r"[^a-z0-9]+",
-        " ",
-        value.lower(),
-    ).strip()
+    def normalise(value: str) -> str:
+        return re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            value.lower(),
+        ).strip()
 
     return normalise(candidate) == normalise(title)
 
@@ -924,9 +981,7 @@ def _markdown_to_latex(
 
     for index, citation in enumerate(citations):
         token = f"RESEARCHOSCITATION{index}TOKEN"
-        command = (
-            f"\\cite{{{citation.citation_key}}}"
-        )
+        command = f"\\cite{{{citation.citation_key}}}"
 
         text = text.replace(command, token)
         citation_tokens[token] = command
@@ -1181,7 +1236,9 @@ def _generation_warnings(
     return warnings
 
 
-def _is_rate_limit_error(exc: Exception) -> bool:
+def _is_rate_limit_error(
+    exc: Exception,
+) -> bool:
     status_code = getattr(exc, "status_code", None)
     text = str(exc).lower()
 
@@ -1202,8 +1259,8 @@ def _call_groq(
         raise HTTPException(
             status_code=500,
             detail=(
-                "GROQ_API_KEY or GROQ_API_KEYS is missing. Add it to backend/.env "
-                "and restart the backend."
+                "GROQ_API_KEY or GROQ_API_KEYS is missing. "
+                "Add it to backend/.env and restart the backend."
             ),
         )
 
@@ -1211,8 +1268,12 @@ def _call_groq(
 
     for attempt in range(2):
         try:
-            client = get_groq_client(timeout=90.0, max_retries=1)
+            client = get_groq_client(
+                timeout=90.0,
+                max_retries=1,
+            )
             assert client is not None
+
             completion = client.chat.completions.create(
                 model=settings.GROQ_MODEL,
                 temperature=0.2,
@@ -1238,7 +1299,10 @@ def _call_groq(
                 )
 
             choice = completion.choices[0]
-            content = (choice.message.content or "").strip()
+            content = (
+                choice.message.content or ""
+            ).strip()
+
             finish_reason = str(
                 getattr(choice, "finish_reason", "") or ""
             ).lower()
@@ -1255,11 +1319,12 @@ def _call_groq(
                 raise HTTPException(
                     status_code=502,
                     detail=(
-                        "The model reached the requested output-token budget "
-                        f"({max_tokens} tokens) before completing the section. "
-                        "Use a shorter word target, generate the document section "
-                        "by section, or increase MAX_GENERATION_TOKENS if the "
-                        "configured Groq model supports a larger completion."
+                        "The model reached the requested output-token "
+                        f"budget ({max_tokens} tokens) before completing "
+                        "the section. Use a shorter word target, generate "
+                        "the document section by section, or increase "
+                        "MAX_GENERATION_TOKENS if the configured Groq "
+                        "model supports a larger completion."
                     ),
                 )
 
@@ -1320,6 +1385,11 @@ def generate_workspace_content(
             ),
         )
 
+    document_format = _normalise_document_format(
+        request.document_format
+        or workspace.get("document_format")
+    )
+
     papers = _get_workspace_papers(paper_ids)
 
     chunks = _retrieve_evidence(
@@ -1344,8 +1414,6 @@ def generate_workspace_content(
         int(request.target_word_count),
     )
 
-    # Academic prose, citations, and cautious wording can require
-    # substantially more tokens than a basic word-to-token estimate.
     generation_tokens = min(
         MAX_GENERATION_TOKENS,
         max(
@@ -1360,8 +1428,10 @@ def generate_workspace_content(
             "target_word_count": requested_words,
             "max_tokens": generation_tokens,
             "model": settings.GROQ_MODEL,
+            "document_format": document_format,
         },
     )
+
     content_markdown = _call_groq(
         prompt=prompt,
         max_tokens=generation_tokens,
@@ -1394,6 +1464,8 @@ def generate_workspace_content(
         ),
         source_chunk_ids=source_chunk_ids,
         model=settings.GROQ_MODEL,
+        bibtex=_build_bibtex(citations),
+        document_format=document_format,
     )
 
 
@@ -1401,7 +1473,7 @@ def create_workspace_version(
     workspace_id: str,
     payload: WorkspaceVersionCreate,
 ) -> WorkspaceVersionResponse:
-    _get_workspace_document(workspace_id)
+    workspace = _get_workspace_document(workspace_id)
 
     now = datetime.utcnow()
 
@@ -1420,6 +1492,11 @@ def create_workspace_version(
         else 1
     )
 
+    document_format = _normalise_document_format(
+        payload.document_format
+        or workspace.get("document_format")
+    )
+
     document = {
         "workspace_id": workspace_id,
         "content_type": payload.content_type,
@@ -1432,6 +1509,7 @@ def create_workspace_version(
         "bibtex": build_references_bib(payload.citations),
         "warnings": payload.warnings,
         "source_chunk_ids": payload.source_chunk_ids,
+        "document_format": document_format,
         "version": version_number,
         "created_at": now,
     }
@@ -1444,12 +1522,11 @@ def create_workspace_version(
 
     workspaces_collection.update_one(
         {
-            "_id": _validate_workspace_id(
-                workspace_id
-            ),
+            "_id": _validate_workspace_id(workspace_id),
         },
         {
             "$set": {
+                "document_format": document_format,
                 "updated_at": now,
             },
         },

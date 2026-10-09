@@ -21,7 +21,6 @@ from app.services.workspace_service import (
     update_workspace,
 )
 
-
 router = APIRouter(
     prefix="/workspaces",
     tags=["Module 9 - Research Workspace"],
@@ -35,7 +34,7 @@ router = APIRouter(
 )
 def create_new_workspace(
     payload: WorkspaceCreate,
-):
+) -> WorkspaceResponse:
     return create_workspace(payload)
 
 
@@ -43,7 +42,7 @@ def create_new_workspace(
     "",
     response_model=List[WorkspaceResponse],
 )
-def get_all_workspaces():
+def get_all_workspaces() -> List[WorkspaceResponse]:
     return list_workspaces()
 
 
@@ -51,7 +50,9 @@ def get_all_workspaces():
     "/{workspace_id}",
     response_model=WorkspaceResponse,
 )
-def get_one_workspace(workspace_id: str):
+def get_one_workspace(
+    workspace_id: str,
+) -> WorkspaceResponse:
     return get_workspace(workspace_id)
 
 
@@ -62,7 +63,7 @@ def get_one_workspace(workspace_id: str):
 def update_one_workspace(
     workspace_id: str,
     payload: WorkspaceUpdate,
-):
+) -> WorkspaceResponse:
     return update_workspace(workspace_id, payload)
 
 
@@ -73,7 +74,7 @@ def update_one_workspace(
 def generate_content_for_workspace(
     workspace_id: str,
     payload: WorkspaceGenerateRequest,
-):
+) -> WorkspaceGenerationResponse:
     return generate_workspace_content(
         workspace_id,
         payload,
@@ -88,7 +89,7 @@ def generate_content_for_workspace(
 def save_workspace_version(
     workspace_id: str,
     payload: WorkspaceVersionCreate,
-):
+) -> WorkspaceVersionResponse:
     return create_workspace_version(
         workspace_id,
         payload,
@@ -101,5 +102,5 @@ def save_workspace_version(
 )
 def get_workspace_version_list(
     workspace_id: str,
-):
+) -> List[WorkspaceVersionResponse]:
     return list_workspace_versions(workspace_id)

@@ -4,7 +4,6 @@ export type PaperStatus =
   | "indexed"
   | "extracted";
 
-
 export interface Paper {
   id: string;
   title: string;
@@ -30,7 +29,6 @@ export interface Paper {
   keywords?: string[];
 }
 
-
 export interface Extraction {
   paper_id?: string;
   objective?: string | null;
@@ -45,7 +43,6 @@ export interface Extraction {
   updated_at?: string | null;
 }
 
-
 export interface SearchMetadata {
   research_gap?: string | null;
   limitations?: string | null;
@@ -54,7 +51,6 @@ export interface SearchMetadata {
   future_work?: string | null;
   keywords?: string[];
 }
-
 
 export interface ChunkResult {
   id: string;
@@ -69,14 +65,12 @@ export interface ChunkResult {
   metadata?: SearchMetadata | null;
 }
 
-
 export interface PaperSearchResponse {
   query: string;
   top_k: number;
   count: number;
   results: ChunkResult[];
 }
-
 
 export interface CompareRow {
   field: string;
@@ -86,7 +80,6 @@ export interface CompareRow {
   >;
 }
 
-
 export interface AnswerSource {
   source_number?: number;
   paper_title?: string;
@@ -95,7 +88,6 @@ export interface AnswerSource {
   score?: number;
 }
 
-
 export interface PaperAnswer {
   paper_id: string;
   question: string;
@@ -103,7 +95,6 @@ export interface PaperAnswer {
   sources: AnswerSource[];
   model?: string;
 }
-
 
 export interface LiteraturePaper {
   source: string;
@@ -118,9 +109,7 @@ export interface LiteraturePaper {
   venue?: string | null;
 }
 
-
 export interface PaperMetadata extends LiteraturePaper {}
-
 
 /* ============================================================
    Module 7 — Reviewer Simulation
@@ -132,97 +121,33 @@ export type ReviewConcern =
   | "Major"
   | "Critical";
 
-
 export type ReviewConfidence =
   | "Low"
   | "Medium"
   | "High";
 
-
 export interface ReviewDimension {
   id: string;
   title: string;
-
-  /*
-   * Score generated from the paper evidence by the
-   * review model.
-   */
   score: string;
-
-  /*
-   * Severity of the issue identified in this dimension.
-   */
   concern: ReviewConcern;
-
-  /*
-   * Confidence reflects how strongly the available
-   * paper evidence supports the assessment.
-   */
   confidence: ReviewConfidence;
-
-  /*
-   * Evidence taken from the supplied paper context.
-   */
   evidence: string;
-
-  /*
-   * Actionable improvement suggested from the
-   * identified evidence/gap.
-   */
   suggestion: string;
 }
-
 
 export interface ReviewReport {
   paperId: string;
   paperTitle: string;
-
-  /*
-   * Overall numerical assessment.
-   * Example: "7.4/10"
-   */
   overallScore: string;
-
-  /*
-   * Natural-language assessment generated from
-   * the paper evidence.
-   */
   overallAssessment: string;
-
-  /*
-   * Kept for compatibility with the existing
-   * review frontend/backend structure.
-   */
   summary: string;
-
-  /*
-   * Positive aspects identified from the paper.
-   */
   strengths: string[];
-
-  /*
-   * Weaknesses or areas requiring improvement.
-   */
   weaknesses: string[];
-
-  /*
-   * Information that is missing or insufficiently
-   * supported in the available paper content.
-   */
   missingInformation: string[];
-
-  /*
-   * Detailed assessment across the fixed review
-   * dimensions.
-   */
   dimensions: ReviewDimension[];
-
-  /*
-   * Backend model used for the review.
-   */
   model?: string;
 }
-
 
 /* ============================================================
    Module 8 — Research Gap and Ideation
@@ -237,7 +162,6 @@ export type IdeationEvidencePaper = {
   methodology?: string | null;
 };
 
-
 export type ResearchIdea = {
   title: string;
   problem_statement: string;
@@ -246,7 +170,6 @@ export type ResearchIdea = {
   expected_contribution: string;
   evidence_paper_ids: string[];
 };
-
 
 export type IdeationResponse = {
   corpus_size: number;
@@ -259,10 +182,8 @@ export type IdeationResponse = {
   model: string;
 };
 
-
 /* ============================================================
    Legacy Manuscript Composer
-   Kept only while old /manuscript routes exist.
    ============================================================ */
 
 export type SentencePlan = {
@@ -271,7 +192,6 @@ export type SentencePlan = {
   claim: string;
   citation_paper_ids: string[];
 };
-
 
 export type CitationSource = {
   paper_id: string;
@@ -283,12 +203,10 @@ export type CitationSource = {
   evidence?: string | null;
 };
 
-
 export type SectionPlanResponse = {
   section_type:
     | "related_work"
     | "methodology";
-
   section_title: string;
   objective: string;
   sentence_plan: SentencePlan[];
@@ -296,23 +214,24 @@ export type SectionPlanResponse = {
   model: string;
 };
 
-
 export type DraftSectionResponse = {
   section_type:
     | "related_work"
     | "methodology";
-
   section_title: string;
   markdown: string;
   citations: CitationSource[];
   model: string;
 };
 
-
 /* ============================================================
    Module 9 — Research Workspace
    ============================================================ */
 
+/*
+ * These must match the valid values returned and accepted
+ * by your FastAPI backend.
+ */
 export type WorkspaceContentType =
   | "introduction"
   | "research_problem"
@@ -329,9 +248,12 @@ export type WorkspaceContentType =
   | "abstract_draft"
   | "conclusion";
 
+/*
+ * Controls the LaTeX preamble and resulting PDF layout.
+ */
+export type DocumentFormat = "normal" | "ieee";
 
 export type WorkspaceIdea = ResearchIdea;
-
 
 export interface Workspace {
   id: string;
@@ -342,8 +264,13 @@ export interface Workspace {
   research_objective: string;
   created_at: string;
   updated_at: string;
-}
 
+  /*
+   * Optional for backward compatibility with existing workspaces.
+   * New workspace records should save this as "normal" or "ieee".
+   */
+  document_format?: DocumentFormat;
+}
 
 export interface WorkspaceCitation {
   paper_id: string;
@@ -357,7 +284,6 @@ export interface WorkspaceCitation {
   page?: number | null;
 }
 
-
 export interface WorkspaceGenerationResponse {
   workspace_id: string;
   content_type: WorkspaceContentType;
@@ -369,19 +295,36 @@ export interface WorkspaceGenerationResponse {
   source_chunk_ids: string[];
   model: string;
   bibtex: string;
+
+  /*
+   * Optional because older generation API responses may not include it.
+   */
+  document_format?: DocumentFormat;
 }
 
-
+/*
+ * This is the exact type used by saveWorkspaceVersion().
+ * The previous version used:
+ *
+ * content_type: string
+ * citations: unknown[]
+ *
+ * Those two declarations caused the TypeScript errors in
+ * app/workspace/[workspaceId]/page.tsx and
+ * app/workspace/[workspaceId]/latex/page.tsx.
+ */
 export interface WorkspaceVersion {
   id: string;
-  workspace_id: string;
+  version: number;
+
   content_type: WorkspaceContentType;
   content_markdown: string;
   latex_code: string;
+
+  bibtex?: string;
   citations: WorkspaceCitation[];
   warnings: string[];
   source_chunk_ids: string[];
-  bibtex: string;
-  version: number;
-  created_at: string;
+
+  document_format?: DocumentFormat;
 }

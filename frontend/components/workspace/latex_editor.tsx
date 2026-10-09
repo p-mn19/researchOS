@@ -44,7 +44,9 @@ export function LatexEditor({
         spellCheck={false}
         aria-label="LaTeX source editor"
         className="min-h-[520px] w-full resize-y bg-slate-950 p-5 font-mono text-sm leading-6 text-emerald-200 outline-none placeholder:text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
-        placeholder={"\\section{Related Work}\n\nWrite your LaTeX content here."}
+        placeholder={
+          "\\section{Related Work}\n\nWrite your LaTeX content here."
+        }
       />
     </div>
   );

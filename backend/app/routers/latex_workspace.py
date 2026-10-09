@@ -9,7 +9,6 @@ from app.schemas.workspace import (
 from app.services.latex_compile_service import compile_latex
 from app.services.workspace_service import get_workspace
 
-
 router = APIRouter(
     prefix="/workspaces",
     tags=["LaTeX Workspace"],
@@ -25,21 +24,22 @@ def compile_workspace_latex_status(
     payload: WorkspaceLatexCompileRequest,
 ) -> WorkspaceLatexCompileStatusResponse:
     """
-    Compile LaTeX and return status/log/error data without PDF bytes.
-
-    This is useful for later compiler-error UI and diagnostics.
+    Compile LaTeX and return status, compiler log, and parsed errors
+    without returning PDF bytes.
     """
     get_workspace(workspace_id)
 
     result = compile_latex(
         latex_source=payload.latex_code,
         references_bib=payload.references_bib,
+        document_format=payload.document_format,
     )
 
     return WorkspaceLatexCompileStatusResponse(
         success=result["success"],
         log=result["log"],
         errors=result["errors"],
+        document_format=payload.document_format,
     )
 
 
@@ -67,16 +67,17 @@ def compile_workspace_latex(
     payload: WorkspaceLatexCompileRequest,
 ) -> Response:
     """
-    Compile a workspace LaTeX draft and return a PDF directly.
+    Compile a workspace LaTeX draft and return its PDF directly.
 
-    The PDF is intentionally not stored yet. The frontend will create
-    a temporary browser Blob URL and show it in an iframe.
+    The compiled PDF is not persistently stored. The frontend uses
+    browser Blob URLs for temporary preview and download.
     """
     get_workspace(workspace_id)
 
     result = compile_latex(
         latex_source=payload.latex_code,
         references_bib=payload.references_bib,
+        document_format=payload.document_format,
     )
 
     if not result["success"] or not result["pdf_bytes"]:
@@ -86,6 +87,7 @@ def compile_workspace_latex(
                 "message": "LaTeX compilation failed.",
                 "log": result["log"],
                 "errors": result["errors"],
+                "document_format": payload.document_format,
             },
         )
 
@@ -97,5 +99,6 @@ def compile_workspace_latex(
                 'inline; filename="researchos-document.pdf"'
             ),
             "Cache-Control": "no-store",
+            "X-ResearchOS-Document-Format": payload.document_format,
         },
     )

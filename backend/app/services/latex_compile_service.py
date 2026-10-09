@@ -5,18 +5,40 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+DocumentFormat = Literal["normal", "ieee"]
 
 TECTONIC_EXECUTABLE = (
     r"C:\Users\Prem\tools\tectonic\tectonic.exe"
 )
+
 COMPILE_TIMEOUT_SECONDS = 300
 MAX_LATEX_SOURCE_CHARS = 250_000
 MAX_BIBTEX_CHARS = 250_000
 
 
-def _convert_markdown_bold(latex_source: str) -> str:
+def _compile_failure(
+    log: str,
+    message: str,
+    line: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "success": False,
+        "pdf_bytes": None,
+        "log": log,
+        "errors": [
+            {
+                "line": line,
+                "message": message,
+            }
+        ],
+    }
+
+
+def _convert_markdown_bold(
+    latex_source: str,
+) -> str:
     """Support Markdown bold markers left in legacy generated drafts."""
     return re.sub(
         r"\*\*(.+?)\*\*",
@@ -50,19 +72,118 @@ def _restore_legacy_citation_tokens(
     )
 
 
+def _normal_document_preamble() -> str:
+    return r"""\documentclass[12pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{float}
+
+\title{ResearchOS Generated Draft}
+\author{}
+\date{}
+"""
+
+
+def _ieee_document_preamble() -> str:
+    return r"""\documentclass[conference]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{balance}
+\usepackage{float}
+
+\title{ResearchOS Generated Draft}
+\author{}
+"""
+
+
+def _bibliography_block(
+    references_bib: str,
+    document_format: DocumentFormat,
+) -> str:
+    if not references_bib.strip():
+        return ""
+
+    bibliography_style = (
+        "IEEEtran"
+        if document_format == "ieee"
+        else "plain"
+    )
+
+    return (
+        "\n\\nocite{*}\n"
+        f"\\bibliographystyle{{{bibliography_style}}}\n"
+        "\\bibliography{references}\n"
+    )
+
+
+def validate_document_format(
+    latex_source: str,
+    document_format: DocumentFormat,
+) -> str | None:
+    """
+    Validate a full LaTeX document against its selected format.
+
+    Returns an error string when a complete document has a document-class
+    mismatch. Returns None for valid complete documents and fragments.
+    """
+    source = latex_source or ""
+
+    if "\\documentclass" not in source:
+        return None
+
+    ieee_document_class = (
+        r"\documentclass[conference]{IEEEtran}"
+    )
+
+    if (
+        document_format == "ieee"
+        and ieee_document_class not in source
+    ):
+        return (
+            "IEEE double-column format was selected, but the LaTeX "
+            "source does not contain "
+            r"\documentclass[conference]{IEEEtran}."
+        )
+
+    if (
+        document_format == "normal"
+        and "IEEEtran" in source
+    ):
+        return (
+            "Normal single-column format was selected, but the LaTeX "
+            "source still uses the IEEEtran document class."
+        )
+
+    return None
+
+
 def build_complete_document(
     latex_source: str,
     references_bib: str = "",
+    document_format: DocumentFormat = "normal",
 ) -> str:
     """
-    Accept either a complete LaTeX document or a generated LaTeX section.
+    Accept a complete LaTeX document or a generated LaTeX fragment.
 
-    Workspace AI generation currently returns content such as:
-        \\section{Related Work}
-        ...
-
-    This function wraps such generated section content in a minimal
-    compilable LaTeX document.
+    If the source is a fragment, wrap it using either a normal article
+    template or IEEE two-column conference template.
     """
     source = _restore_legacy_citation_tokens(
         _convert_markdown_bold(
@@ -74,22 +195,18 @@ def build_complete_document(
     if "\\documentclass" in source:
         return source
 
-    bibliography = """
-\\nocite{*}
-\\bibliographystyle{plain}
-\\bibliography{references}
-""" if references_bib.strip() else ""
+    preamble = (
+        _ieee_document_preamble()
+        if document_format == "ieee"
+        else _normal_document_preamble()
+    )
 
-    return f"""\\documentclass[12pt]{{article}}
+    bibliography = _bibliography_block(
+        references_bib,
+        document_format,
+    )
 
-\\usepackage[margin=1in]{{geometry}}
-\\usepackage{{amsmath}}
-\\usepackage{{graphicx}}
-\\usepackage{{hyperref}}
-
-\\title{{ResearchOS Generated Draft}}
-\\author{{}}
-\\date{{}}
+    return f"""{preamble}
 
 \\begin{{document}}
 
@@ -103,11 +220,12 @@ def build_complete_document(
 """
 
 
-def parse_latex_errors(log_text: str) -> list[dict[str, Any]]:
+def parse_latex_errors(
+    log_text: str,
+) -> list[dict[str, Any]]:
     """
-    Extract a small, display-friendly error list from Tectonic output.
-
-    The raw compile log is also returned to the caller for debugging.
+    Extract a small display-friendly error list from Tectonic output.
+    The raw compiler log is also returned.
     """
     errors: list[dict[str, Any]] = []
     seen: set[tuple[int | None, str]] = set()
@@ -159,85 +277,83 @@ def parse_latex_errors(log_text: str) -> list[dict[str, Any]]:
 def compile_latex(
     latex_source: str,
     references_bib: str = "",
+    document_format: DocumentFormat = "normal",
 ) -> dict[str, Any]:
     """
     Compile workspace LaTeX using Tectonic.
 
-    Security boundaries in this initial implementation:
+    Security boundaries:
     - Fixed filenames: main.tex and references.bib
-    - New temporary directory for every request
+    - A new temporary directory per request
     - Tectonic --untrusted mode
     - No shell=True
-    - Compile timeout
-    - Source-size limits
+    - Timeouts and size limits
     """
     source = (latex_source or "").strip()
     bibtex = (references_bib or "").strip()
 
+    if document_format not in ("normal", "ieee"):
+        return _compile_failure(
+            log="Unsupported document format.",
+            message=(
+                "Document format must be either 'normal' or 'ieee'."
+            ),
+        )
+
     if not source:
-        return {
-            "success": False,
-            "pdf_bytes": None,
-            "log": "No LaTeX source was provided.",
-            "errors": [
-                {
-                    "line": None,
-                    "message": "No LaTeX source was provided.",
-                }
-            ],
-        }
+        return _compile_failure(
+            log="No LaTeX source was provided.",
+            message="No LaTeX source was provided.",
+        )
 
     if len(source) > MAX_LATEX_SOURCE_CHARS:
-        return {
-            "success": False,
-            "pdf_bytes": None,
-            "log": "LaTeX source exceeds the allowed size.",
-            "errors": [
-                {
-                    "line": None,
-                    "message": (
-                        f"LaTeX source must be at most "
-                        f"{MAX_LATEX_SOURCE_CHARS:,} characters."
-                    ),
-                }
-            ],
-        }
+        return _compile_failure(
+            log="LaTeX source exceeds the allowed size.",
+            message=(
+                f"LaTeX source must be at most "
+                f"{MAX_LATEX_SOURCE_CHARS:,} characters."
+            ),
+        )
 
     if len(bibtex) > MAX_BIBTEX_CHARS:
-        return {
-            "success": False,
-            "pdf_bytes": None,
-            "log": "BibTeX source exceeds the allowed size.",
-            "errors": [
-                {
-                    "line": None,
-                    "message": (
-                        f"BibTeX source must be at most "
-                        f"{MAX_BIBTEX_CHARS:,} characters."
-                    ),
-                }
-            ],
-        }
+        return _compile_failure(
+            log="BibTeX source exceeds the allowed size.",
+            message=(
+                f"BibTeX source must be at most "
+                f"{MAX_BIBTEX_CHARS:,} characters."
+            ),
+        )
+
+    format_error = validate_document_format(
+        source,
+        document_format,
+    )
+
+    if format_error:
+        return _compile_failure(
+            log=format_error,
+            message=format_error,
+        )
 
     tectonic_path = shutil.which(TECTONIC_EXECUTABLE)
 
     if tectonic_path is None:
-        return {
-            "success": False,
-            "pdf_bytes": None,
-            "log": "Tectonic executable was not found on PATH.",
-            "errors": [
-                {
-                    "line": None,
-                    "message": (
-                        "Tectonic is not installed or cannot be found "
-                        "through the backend PATH."
-                    ),
-                }
-            ],
-        }
+        tectonic_path = shutil.which("tectonic")
 
-    complete_document = build_complete_document(source, bibtex)
+    if tectonic_path is None:
+        return _compile_failure(
+            log="Tectonic executable was not found.",
+            message=(
+                "Tectonic is not installed or cannot be found "
+                "through the configured executable path or backend PATH."
+            ),
+        )
+
+    complete_document = build_complete_document(
+        latex_source=source,
+        references_bib=bibtex,
+        document_format=document_format,
+    )
 
     with tempfile.TemporaryDirectory(
         prefix="researchos_latex_",
@@ -281,35 +397,21 @@ def compile_latex(
                 check=False,
             )
         except subprocess.TimeoutExpired:
-            return {
-                "success": False,
-                "pdf_bytes": None,
-                "log": (
+            return _compile_failure(
+                log=(
                     "LaTeX compilation exceeded the "
                     f"{COMPILE_TIMEOUT_SECONDS}-second time limit."
                 ),
-                "errors": [
-                    {
-                        "line": None,
-                        "message": "LaTeX compilation timed out.",
-                    }
-                ],
-            }
+                message="LaTeX compilation timed out.",
+            )
         except OSError as exc:
-            return {
-                "success": False,
-                "pdf_bytes": None,
-                "log": str(exc),
-                "errors": [
-                    {
-                        "line": None,
-                        "message": (
-                            "Unable to start the Tectonic compiler: "
-                            f"{exc}"
-                        ),
-                    }
-                ],
-            }
+            return _compile_failure(
+                log=str(exc),
+                message=(
+                    "Unable to start the Tectonic compiler: "
+                    f"{exc}"
+                ),
+            )
 
         compile_log = "\n".join(
             item

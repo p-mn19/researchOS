@@ -5,7 +5,10 @@ import { useEffect, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app_shell";
-import { LatexWorkspacePanel } from "@/components/workspace/latex_workspace_panel";
+import {
+  LatexWorkspacePanel,
+  type DocumentFormat,
+} from "@/components/workspace/latex_workspace_panel";
 import {
   getWorkspaceVersions,
   getWorkspaces,
@@ -13,17 +16,29 @@ import {
 } from "@/lib/api";
 import type { Workspace, WorkspaceVersion } from "@/lib/types";
 
-
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message
     ? error.message
     : "Could not load the saved manuscript.";
 }
 
+function resolveDocumentFormat(
+  latexCode: string,
+  savedFormat?: DocumentFormat,
+): DocumentFormat {
+  if (savedFormat) {
+    return savedFormat;
+  }
+
+  return latexCode.includes("\\documentclass[conference]{IEEEtran}")
+    ? "ieee"
+    : "normal";
+}
 
 export default function LatexWorkspacePage() {
   const params = useParams<{ workspaceId: string }>();
   const workspaceId = params.workspaceId;
+
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [version, setVersion] = useState<WorkspaceVersion | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +55,7 @@ export default function LatexWorkspacePage() {
           getWorkspaces(),
           getWorkspaceVersions(workspaceId),
         ]);
+
         const latestVersion = versions.reduce<WorkspaceVersion | null>(
           (latest, item) =>
             latest === null || item.version > latest.version
@@ -62,11 +78,11 @@ export default function LatexWorkspacePage() {
     void loadSavedManuscript();
   }, [workspaceId]);
 
-  async function handleSave(latexCode: string) {
-    const activeWorkspace = workspace;
-    const activeVersion = version;
-
-    if (!activeWorkspace || !activeVersion) {
+  async function handleSave(
+    latexCode: string,
+    documentFormat: DocumentFormat,
+  ) {
+    if (!workspace || !version) {
       return;
     }
 
@@ -74,22 +90,30 @@ export default function LatexWorkspacePage() {
     setNotice("");
 
     try {
-      const saved = await saveWorkspaceVersion(activeWorkspace.id, {
-        content_type: activeVersion.content_type,
-        content_markdown: activeVersion.content_markdown,
+      const saved = await saveWorkspaceVersion(workspace.id, {
+        content_type: version.content_type,
+        content_markdown: version.content_markdown,
         latex_code: latexCode,
-        citations: activeVersion.citations,
-        warnings: activeVersion.warnings,
-        source_chunk_ids: activeVersion.source_chunk_ids,
+        citations: version.citations,
+        warnings: version.warnings,
+        source_chunk_ids: version.source_chunk_ids,
+        document_format: documentFormat,
       });
 
       setVersion(saved);
-      setNotice(`Workspace version ${saved.version} saved successfully.`);
+      setNotice(
+        `Workspace version ${saved.version} saved successfully.`,
+      );
     } catch (err) {
       setError(errorMessage(err));
       throw err;
     }
   }
+
+  const initialDocumentFormat = resolveDocumentFormat(
+    version?.latex_code ?? "",
+    version?.document_format,
+  );
 
   return (
     <AppShell>
@@ -128,12 +152,15 @@ export default function LatexWorkspacePage() {
           <LatexWorkspacePanel
             workspaceId={workspaceId}
             initialLatexCode={version.latex_code}
+            initialDocumentFormat={initialDocumentFormat}
             referencesBib={version.bibtex}
             onSave={handleSave}
           />
         ) : (
           <section className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600 shadow-sm">
-            No saved manuscript version is available. Return to the workspace and save the manuscript before opening the LaTeX workspace.
+            No saved manuscript version is available. Return to the
+            workspace and save the manuscript before opening the LaTeX
+            workspace.
           </section>
         )}
       </div>

@@ -1,9 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
-from typing import Any, Optional
 
 from pydantic import BaseModel, Field
-
 
 ContentType = Literal[
     "introduction",
@@ -20,6 +18,11 @@ ContentType = Literal[
     "limitations_and_scope",
     "abstract_draft",
     "conclusion",
+]
+
+DocumentFormat = Literal[
+    "normal",
+    "ieee",
 ]
 
 
@@ -72,6 +75,8 @@ class WorkspaceCreate(BaseModel):
 
     research_objective: str = ""
 
+    document_format: DocumentFormat = "normal"
+
 
 class WorkspaceUpdate(BaseModel):
     title: Optional[str] = Field(
@@ -88,6 +93,8 @@ class WorkspaceUpdate(BaseModel):
 
     research_objective: Optional[str] = None
 
+    document_format: Optional[DocumentFormat] = None
+
 
 class WorkspaceResponse(BaseModel):
     id: str
@@ -103,6 +110,8 @@ class WorkspaceResponse(BaseModel):
     idea: WorkspaceIdea
 
     research_objective: str = ""
+
+    document_format: DocumentFormat = "normal"
 
     created_at: datetime
     updated_at: datetime
@@ -134,6 +143,8 @@ class WorkspaceGenerateRequest(BaseModel):
         default="",
         max_length=1500,
     )
+
+    document_format: Optional[DocumentFormat] = None
 
 
 class WorkspaceCitation(BaseModel):
@@ -192,6 +203,10 @@ class WorkspaceGenerationResponse(BaseModel):
 
     model: str
 
+    bibtex: str = ""
+
+    document_format: DocumentFormat = "normal"
+
 
 class WorkspaceVersionCreate(BaseModel):
     """
@@ -216,6 +231,8 @@ class WorkspaceVersionCreate(BaseModel):
         default_factory=list,
     )
 
+    document_format: DocumentFormat = "normal"
+
 
 class WorkspaceVersionResponse(
     WorkspaceVersionCreate,
@@ -230,6 +247,7 @@ class WorkspaceVersionResponse(
 
     created_at: datetime
 
+
 class WorkspaceLatexCompileRequest(BaseModel):
     latex_code: str = Field(
         min_length=1,
@@ -239,6 +257,7 @@ class WorkspaceLatexCompileRequest(BaseModel):
             "generated in the ResearchOS workspace."
         ),
     )
+
     references_bib: str = Field(
         default="",
         max_length=250_000,
@@ -246,6 +265,8 @@ class WorkspaceLatexCompileRequest(BaseModel):
             "Optional BibTeX entries used by the LaTeX document."
         ),
     )
+
+    document_format: DocumentFormat = "normal"
 
 
 class LatexCompileError(BaseModel):
@@ -255,7 +276,11 @@ class LatexCompileError(BaseModel):
 
 class WorkspaceLatexCompileStatusResponse(BaseModel):
     success: bool
+
     log: str = ""
-    errors: list[LatexCompileError] = Field(
+
+    errors: List[LatexCompileError] = Field(
         default_factory=list,
     )
+
+    document_format: DocumentFormat = "normal"

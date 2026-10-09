@@ -1,5 +1,6 @@
 import type {
   CompareRow,
+  DocumentFormat,
   DraftSectionResponse,
   Extraction,
   IdeationResponse,
@@ -18,11 +19,9 @@ import type {
   WorkspaceVersion,
 } from "./types";
 
-
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ||
   "http://127.0.0.1:8000";
-
 
 export type ExtractionResponse =
   | Extraction
@@ -30,19 +29,17 @@ export type ExtractionResponse =
       extraction?: Extraction;
     };
 
-
 export type LatexCompileError = {
   line: number | null;
   message: string;
 };
 
-
 export type WorkspaceLatexCompileStatusResponse = {
   success: boolean;
   log: string;
   errors: LatexCompileError[];
+  document_format?: DocumentFormat;
 };
-
 
 async function api<T>(
   path: string,
@@ -63,30 +60,24 @@ async function api<T>(
     const text = await response.text();
 
     throw new Error(
-      `API ${response.status}: ${
-        text || "Request failed"
-      }`,
+      `API ${response.status}: ${text || "Request failed"}`,
     );
   }
 
   return response.json() as Promise<T>;
 }
 
-
 /* ============================================================
    Papers
    ============================================================ */
 
-
 export const getPapers = (): Promise<Paper[]> =>
   api<Paper[]>("/papers");
-
 
 export const getPaper = (
   id: string,
 ): Promise<Paper> =>
   api<Paper>(`/papers/${id}`);
-
 
 export const getExtraction = (
   id: string,
@@ -94,7 +85,6 @@ export const getExtraction = (
   api<ExtractionResponse>(
     `/papers/${id}/extraction`,
   );
-
 
 export const deletePaper = (
   id: string,
@@ -120,16 +110,6 @@ export const deletePaper = (
     },
   );
 
-
-/*
- * The backend returns:
- * {
- *   query: string,
- *   top_k: number,
- *   count: number,
- *   results: ChunkResult[]
- * }
- */
 export const searchPaper = (
   id: string,
   query: string,
@@ -148,7 +128,6 @@ export const searchPaper = (
       }),
     },
   );
-
 
 export const askPaper = (
   id: string,
@@ -169,7 +148,6 @@ export const askPaper = (
     },
   );
 
-
 export async function uploadPaper(
   file: File,
 ): Promise<{
@@ -180,10 +158,7 @@ export async function uploadPaper(
 }> {
   const formData = new FormData();
 
-  formData.append(
-    "file",
-    file,
-  );
+  formData.append("file", file);
 
   const response = await fetch(
     `${API_BASE}/papers/upload`,
@@ -195,10 +170,7 @@ export async function uploadPaper(
 
   if (!response.ok) {
     const text = await response.text();
-
-    throw new Error(
-      text || "Upload failed",
-    );
+    throw new Error(text || "Upload failed");
   }
 
   return response.json() as Promise<{
@@ -208,7 +180,6 @@ export async function uploadPaper(
     status: string;
   }>;
 }
-
 
 export const parsePaper = (
   id: string,
@@ -220,7 +191,6 @@ export const parsePaper = (
     },
   );
 
-
 export const extractPaper = (
   id: string,
 ): Promise<ExtractionResponse> =>
@@ -231,11 +201,9 @@ export const extractPaper = (
     },
   );
 
-
 /* ============================================================
    Comparison and Review
    ============================================================ */
-
 
 export const comparePapers = (
   paperIds: string[],
@@ -259,7 +227,6 @@ export const comparePapers = (
     },
   );
 
-
 export const generateReview = (
   paperId: string,
 ): Promise<ReviewReport> =>
@@ -270,11 +237,9 @@ export const generateReview = (
     },
   );
 
-
 /* ============================================================
    Literature Discovery
    ============================================================ */
-
 
 export const searchGlobalLiterature = async (
   query: string,
@@ -289,7 +254,6 @@ export const searchGlobalLiterature = async (
     `/discovery/search?${params.toString()}`,
   );
 };
-
 
 export const searchDiscoveryPapers = async (
   query: string,
@@ -309,11 +273,9 @@ export const searchDiscoveryPapers = async (
     : [];
 };
 
-
 /* ============================================================
    Module 8 — Research Gap and Ideation
    ============================================================ */
-
 
 export const analyzeIdeation = (data: {
   paper_ids: string[];
@@ -331,13 +293,9 @@ export const analyzeIdeation = (data: {
     },
   );
 
-
 /* ============================================================
    Legacy Manuscript Composer
-   These functions can be removed after your old /manuscript
-   backend routes are no longer used.
    ============================================================ */
-
 
 export const createSectionPlan = (data: {
   paper_ids: string[];
@@ -357,7 +315,6 @@ export const createSectionPlan = (data: {
       body: JSON.stringify(data),
     },
   );
-
 
 export const generateManuscriptSection = (data: {
   paper_ids: string[];
@@ -379,11 +336,9 @@ export const generateManuscriptSection = (data: {
     },
   );
 
-
 /* ============================================================
    Module 9 — Research Workspace
    ============================================================ */
-
 
 export const createWorkspace = (data: {
   title: string;
@@ -391,6 +346,7 @@ export const createWorkspace = (data: {
   paper_ids: string[];
   idea: ResearchIdea;
   research_objective?: string;
+  document_format?: DocumentFormat;
 }): Promise<Workspace> =>
   api<Workspace>(
     "/workspaces",
@@ -403,20 +359,13 @@ export const createWorkspace = (data: {
     },
   );
 
-
 export const getWorkspaces = (): Promise<Workspace[]> =>
-  api<Workspace[]>(
-    "/workspaces",
-  );
-
+  api<Workspace[]>("/workspaces");
 
 export const getWorkspace = (
   workspaceId: string,
 ): Promise<Workspace> =>
-  api<Workspace>(
-    `/workspaces/${workspaceId}`,
-  );
-
+  api<Workspace>(`/workspaces/${workspaceId}`);
 
 export const updateWorkspace = (
   workspaceId: string,
@@ -426,6 +375,7 @@ export const updateWorkspace = (
     paper_ids: string[];
     idea: ResearchIdea;
     research_objective: string;
+    document_format: DocumentFormat;
   }>,
 ): Promise<Workspace> =>
   api<Workspace>(
@@ -439,17 +389,15 @@ export const updateWorkspace = (
     },
   );
 
-
 export const generateWorkspaceContent = (
   workspaceId: string,
   data: {
     content_type: WorkspaceContentType;
     target_word_count?: number;
     generate_latex?: boolean;
-    citation_style?:
-      | "internal"
-      | "latex";
+    citation_style?: "internal" | "latex";
     instructions?: string;
+    document_format?: DocumentFormat;
   },
 ): Promise<WorkspaceGenerationResponse> =>
   api<WorkspaceGenerationResponse>(
@@ -463,7 +411,6 @@ export const generateWorkspaceContent = (
     },
   );
 
-
 export const saveWorkspaceVersion = (
   workspaceId: string,
   data: {
@@ -473,6 +420,7 @@ export const saveWorkspaceVersion = (
     citations?: WorkspaceCitation[];
     warnings?: string[];
     source_chunk_ids?: string[];
+    document_format?: DocumentFormat;
   },
 ): Promise<WorkspaceVersion> =>
   api<WorkspaceVersion>(
@@ -486,7 +434,6 @@ export const saveWorkspaceVersion = (
     },
   );
 
-
 export const getWorkspaceVersions = (
   workspaceId: string,
 ): Promise<WorkspaceVersion[]> =>
@@ -494,16 +441,43 @@ export const getWorkspaceVersions = (
     `/workspaces/${workspaceId}/versions`,
   );
 
-
 /* ============================================================
    Module 9 — LaTeX Workspace
    ============================================================ */
 
+function getCompileErrorMessage(
+  data: unknown,
+  fallback: string,
+): string {
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "detail" in data
+  ) {
+    const detail = data.detail;
+
+    if (typeof detail === "string") {
+      return detail;
+    }
+
+    if (
+      typeof detail === "object" &&
+      detail !== null &&
+      "message" in detail &&
+      typeof detail.message === "string"
+    ) {
+      return detail.message;
+    }
+  }
+
+  return fallback;
+}
 
 export async function compileWorkspaceLatexStatus(
   workspaceId: string,
   latexCode: string,
   referencesBib = "",
+  documentFormat: DocumentFormat = "normal",
 ): Promise<WorkspaceLatexCompileStatusResponse> {
   const response = await fetch(
     `${API_BASE}/workspaces/${workspaceId}/latex/compile/status`,
@@ -515,41 +489,31 @@ export async function compileWorkspaceLatexStatus(
       body: JSON.stringify({
         latex_code: latexCode,
         references_bib: referencesBib,
+        document_format: documentFormat,
       }),
       cache: "no-store",
     },
   );
 
-  const data = await response.json().catch(() => null);
+  const data: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const detail = data?.detail;
-
-    if (typeof detail === "string") {
-      throw new Error(detail);
-    }
-
-    if (
-      detail &&
-      typeof detail === "object" &&
-      typeof detail.message === "string"
-    ) {
-      throw new Error(detail.message);
-    }
-
     throw new Error(
-      "Unable to check LaTeX compilation status.",
+      getCompileErrorMessage(
+        data,
+        "Unable to check LaTeX compilation status.",
+      ),
     );
   }
 
   return data as WorkspaceLatexCompileStatusResponse;
 }
 
-
 export async function compileWorkspaceLatexPdf(
   workspaceId: string,
   latexCode: string,
   referencesBib = "",
+  documentFormat: DocumentFormat = "normal",
 ): Promise<Blob> {
   const response = await fetch(
     `${API_BASE}/workspaces/${workspaceId}/latex/compile`,
@@ -561,28 +525,21 @@ export async function compileWorkspaceLatexPdf(
       body: JSON.stringify({
         latex_code: latexCode,
         references_bib: referencesBib,
+        document_format: documentFormat,
       }),
       cache: "no-store",
     },
   );
 
   if (!response.ok) {
-    const data = await response.json().catch(() => null);
-    const detail = data?.detail;
+    const data: unknown = await response.json().catch(() => null);
 
-    if (
-      detail &&
-      typeof detail === "object" &&
-      typeof detail.message === "string"
-    ) {
-      throw new Error(detail.message);
-    }
-
-    if (typeof detail === "string") {
-      throw new Error(detail);
-    }
-
-    throw new Error("LaTeX compilation failed.");
+    throw new Error(
+      getCompileErrorMessage(
+        data,
+        "LaTeX compilation failed.",
+      ),
+    );
   }
 
   return response.blob();

@@ -2,18 +2,27 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, FileText, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  Columns2,
+  FileText,
+  FileType2,
+  Loader2,
+} from "lucide-react";
 
 import { AppShell } from "@/components/layout/app_shell";
 import { getWorkspaceVersions, getWorkspaces } from "@/lib/api";
-import type { Workspace } from "@/lib/types";
-
+import type {
+  DocumentFormat,
+  Workspace,
+  WorkspaceVersion,
+} from "@/lib/types";
 
 type SavedWorkspace = {
   workspace: Workspace;
-  version: number;
+  version: WorkspaceVersion;
+  documentFormat: DocumentFormat;
 };
-
 
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message
@@ -21,10 +30,31 @@ function errorMessage(error: unknown): string {
     : "Could not load saved manuscript workspaces.";
 }
 
+function resolveDocumentFormat(
+  latexCode: string,
+  savedFormat?: DocumentFormat,
+): DocumentFormat {
+  if (savedFormat) {
+    return savedFormat;
+  }
+
+  return latexCode.includes("\\documentclass[conference]{IEEEtran}")
+    ? "ieee"
+    : "normal";
+}
+
+function formatLabel(format: DocumentFormat): string {
+  return format === "ieee"
+    ? "IEEE double-column"
+    : "Normal single-column";
+}
 
 export default function LatexWorkspaceIndexPage() {
   const router = useRouter();
-  const [savedWorkspaces, setSavedWorkspaces] = useState<SavedWorkspace[]>([]);
+
+  const [savedWorkspaces, setSavedWorkspaces] = useState<
+    SavedWorkspace[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -35,20 +65,34 @@ export default function LatexWorkspaceIndexPage() {
         setError("");
 
         const workspaces = await getWorkspaces();
+
         const results = await Promise.all(
           workspaces.map(async (workspace) => {
             const versions = await getWorkspaceVersions(workspace.id);
-            const latestVersion = versions.reduce<number | null>(
-              (latest, version) =>
-                latest === null || version.version > latest
-                  ? version.version
+
+            const latestVersion = versions.reduce<WorkspaceVersion | null>(
+              (latest, candidate) =>
+                latest === null ||
+                candidate.version > latest.version
+                  ? candidate
                   : latest,
               null,
             );
 
-            return latestVersion === null
-              ? null
-              : { workspace, version: latestVersion };
+            if (!latestVersion) {
+              return null;
+            }
+
+            const documentFormat = resolveDocumentFormat(
+              latestVersion.latex_code,
+              latestVersion.document_format,
+            );
+
+            return {
+              workspace,
+              version: latestVersion,
+              documentFormat,
+            };
           }),
         );
 
@@ -82,7 +126,8 @@ export default function LatexWorkspaceIndexPage() {
               </h1>
 
               <p className="mt-1 text-sm text-slate-600">
-                Open a saved manuscript to edit its full LaTeX draft and compile it with Tectonic.
+                Open a saved manuscript to edit its LaTeX draft,
+                choose a document format, and compile it with Tectonic.
               </p>
             </div>
           </div>
@@ -102,38 +147,71 @@ export default function LatexWorkspaceIndexPage() {
           </section>
         ) : savedWorkspaces.length === 0 ? (
           <section className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600 shadow-sm">
-            No saved manuscripts are available. Create and save a manuscript in Research Workspace first.
+            No saved manuscripts are available. Create and save a
+            manuscript in Research Workspace first.
           </section>
         ) : (
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {savedWorkspaces.map(({ workspace, version }) => (
-              <article
-                key={workspace.id}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-              >
-                <p className="text-xs font-medium text-violet-700">
-                  Saved manuscript · version {version}
-                </p>
+            {savedWorkspaces.map(
+              ({ workspace, version, documentFormat }) => {
+                const isIEEE = documentFormat === "ieee";
 
-                <h2 className="mt-2 text-lg font-semibold text-slate-900">
-                  {workspace.title}
-                </h2>
+                return (
+                  <article
+                    key={workspace.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-medium text-violet-700">
+                        Saved manuscript · version {version.version}
+                      </p>
 
-                <p className="mt-2 line-clamp-3 text-sm leading-5 text-slate-600">
-                  {workspace.description || "No workspace description provided."}
-                </p>
+                      <span
+                        className={[
+                          "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                          isIEEE
+                            ? "bg-blue-50 text-blue-700"
+                            : "bg-slate-100 text-slate-700",
+                        ].join(" ")}
+                      >
+                        {isIEEE ? (
+                          <Columns2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <FileType2 className="h-3.5 w-3.5" />
+                        )}
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push(`/workspace/${workspace.id}/latex`)
-                  }
-                  className="mt-5 inline-flex rounded-xl bg-violet-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-800"
-                >
-                  Open manuscript
-                </button>
-              </article>
-            ))}
+                        {formatLabel(documentFormat)}
+                      </span>
+                    </div>
+
+                    <h2 className="mt-3 text-lg font-semibold text-slate-900">
+                      {workspace.title}
+                    </h2>
+
+                    <p className="mt-2 line-clamp-3 text-sm leading-5 text-slate-600">
+                      {workspace.description ||
+                        "No workspace description provided."}
+                    </p>
+
+                    <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+                      {isIEEE
+                        ? "Uses IEEEtran conference layout with two columns."
+                        : "Uses the normal article layout with one column."}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        router.push(`/workspace/${workspace.id}/latex`)
+                      }
+                      className="mt-5 inline-flex rounded-xl bg-violet-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-800"
+                    >
+                      Open manuscript
+                    </button>
+                  </article>
+                );
+              },
+            )}
           </section>
         )}
       </div>
