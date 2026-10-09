@@ -8,8 +8,13 @@ from pathlib import Path
 from typing import Any
 
 
-TECTONIC_EXECUTABLE = (
-    r"C:\Users\Prem\tools\tectonic\tectonic.exe"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+TECTONIC_EXECUTABLE = str(
+    PROJECT_ROOT
+    / "tools"
+    / "tectonic"
+    / "tectonic.exe"
 )
 COMPILE_TIMEOUT_SECONDS = 300
 MAX_LATEX_SOURCE_CHARS = 250_000
