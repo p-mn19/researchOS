@@ -43,7 +43,7 @@ const items = [
     icon: Lightbulb,
   },
   {
-    href: "/workspace",
+    href: "/research-workspace",
     label: "Research Workspace",
     icon: FileCode2,
   },

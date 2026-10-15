@@ -14,6 +14,7 @@ from app.schemas.workspace import (
 from app.services.workspace_service import (
     create_workspace,
     create_workspace_version,
+    delete_workspace,
     generate_workspace_content,
     get_workspace,
     list_workspace_versions,
@@ -65,6 +66,15 @@ def update_one_workspace(
     payload: WorkspaceUpdate,
 ) -> WorkspaceResponse:
     return update_workspace(workspace_id, payload)
+
+
+@router.delete(
+    "/{workspace_id}",
+)
+def delete_one_workspace(
+    workspace_id: str,
+) -> dict[str, int | str]:
+    return delete_workspace(workspace_id)
 
 
 @router.post(

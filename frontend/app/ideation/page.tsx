@@ -194,7 +194,7 @@ export default function IdeationPage() {
     saveIdeas(updatedIdeas);
     setSavedIdeas(updatedIdeas);
 
-    router.push("/workspace");
+    router.push("/research-workspace");
   }
 
 
@@ -256,7 +256,7 @@ export default function IdeationPage() {
               {savedIdeas.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => router.push("/workspace")}
+                  onClick={() => router.push("/research-workspace")}
                   className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-3 text-sm font-medium text-violet-800 transition hover:bg-violet-100"
                 >
                   <FolderPlus className="h-4 w-4" />

@@ -86,8 +86,12 @@ def _normal_document_preamble() -> str:
 \usepackage[hidelinks]{hyperref}
 \usepackage{float}
 
-\title{ResearchOS Generated Draft}
-\author{}
+% Replace the bracketed placeholders below before submitting the paper.
+\title{A Research Study on [Research Topic]}
+\author{[Author Name] \\
+\textit{[Department or School]} \\
+\textit{[Institution or University]} \\
+{[author.email@example.com]}}
 \date{}
 """
 
@@ -108,8 +112,24 @@ def _ieee_document_preamble() -> str:
 \usepackage{balance}
 \usepackage{float}
 
-\title{ResearchOS Generated Draft}
-\author{}
+% Replace the bracketed placeholders below before submitting the paper.
+\title{A Research Study on [Research Topic]}
+
+\author{
+\IEEEauthorblockN{[Author Name]}
+\IEEEauthorblockA{
+\textit{[Department or School]} \\
+\textit{[Institution or University]} \\
+{[City, Country]} \\
+{[author.email@example.com]}}
+\and
+\IEEEauthorblockN{[Author Name]}
+\IEEEauthorblockA{
+\textit{[Department or School]} \\
+\textit{[Institution or University]} \\
+{[City, Country]} \\
+{[author.email@example.com]}}
+}
 """
 
 
@@ -206,11 +226,36 @@ def build_complete_document(
         document_format,
     )
 
+    front_matter = ""
+
+    if document_format == "ieee":
+        front_matter = r"""
+\begin{abstract}
+Replace this text with a concise abstract that states the research problem,
+method, principal result, and contribution of the paper.
+\end{abstract}
+
+\begin{IEEEkeywords}
+[keyword one], [keyword two], [keyword three]
+\end{IEEEkeywords}
+"""
+    else:
+        front_matter = r"""
+\begin{abstract}
+Replace this text with a concise abstract that states the research problem,
+method, principal result, and contribution of the paper.
+\end{abstract}
+
+\noindent\textbf{Keywords:} [keyword one], [keyword two], [keyword three]
+"""
+
     return f"""{preamble}
 
 \\begin{{document}}
 
 \\maketitle
+
+{front_matter}
 
 {source}
 

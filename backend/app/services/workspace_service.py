@@ -575,6 +575,37 @@ def update_workspace(
     return get_workspace(workspace_id)
 
 
+def delete_workspace(
+    workspace_id: str,
+) -> Dict[str, Any]:
+    """Delete a workspace and all saved manuscript versions it owns."""
+    object_id = _validate_workspace_id(workspace_id)
+
+    result = workspaces_collection.delete_one(
+        {
+            "_id": object_id,
+        }
+    )
+
+    if not result.deleted_count:
+        raise HTTPException(
+            status_code=404,
+            detail="Workspace not found",
+        )
+
+    versions_result = workspace_versions_collection.delete_many(
+        {
+            "workspace_id": workspace_id,
+        }
+    )
+
+    return {
+        "workspace_id": workspace_id,
+        "message": "Workspace deleted successfully.",
+        "versions_deleted": versions_result.deleted_count,
+    }
+
+
 def _get_workspace_papers(
     paper_ids: List[str],
 ) -> List[Dict[str, Any]]:
@@ -1151,6 +1182,16 @@ def _build_prompt(
         )
     )
 
+    abstract_guidance = (
+        "\nAbstract guidance:\n"
+        "Write one self-contained abstract paragraph. State the research "
+        "problem, proposed approach, evaluation plan or evidence basis, "
+        "and intended contribution. Do not use headings, lists, citations, "
+        "or claims that the proposed study has already produced results.\n"
+        if content_type == "abstract_draft"
+        else ""
+    )
+
     return f"""
 Write the academic section: {title}.
 
@@ -1172,6 +1213,8 @@ Expected contribution: {_clip_text(idea.get('expected_contribution'), 500)}
 
 Citation rule:
 {citation_rule}
+
+{abstract_guidance}
 
 Allowed citations:
 {_clip_text(citation_lines, 2000)}
@@ -1291,10 +1334,18 @@ def _call_groq(
             )
 
             if not completion.choices:
+                last_error = RuntimeError(
+                    "Groq returned no generation choices."
+                )
+
+                if attempt == 0:
+                    continue
+
                 raise HTTPException(
                     status_code=502,
                     detail=(
-                        "Groq returned no generation choices."
+                        "The generation service returned an empty response "
+                        "twice. Please try again."
                     ),
                 )
 
@@ -1308,10 +1359,18 @@ def _call_groq(
             ).lower()
 
             if not content:
+                last_error = RuntimeError(
+                    "Groq returned an empty generation."
+                )
+
+                if attempt == 0:
+                    continue
+
                 raise HTTPException(
                     status_code=502,
                     detail=(
-                        "Groq returned an empty generation."
+                        "The generation service returned an empty response "
+                        "twice. Please try again."
                     ),
                 )
 

@@ -367,6 +367,21 @@ export const getWorkspace = (
 ): Promise<Workspace> =>
   api<Workspace>(`/workspaces/${workspaceId}`);
 
+export const deleteWorkspace = (
+  workspaceId: string,
+): Promise<{
+  workspace_id: string;
+  message: string;
+  versions_deleted: number;
+}> =>
+  api<{
+    workspace_id: string;
+    message: string;
+    versions_deleted: number;
+  }>(`/workspaces/${workspaceId}`, {
+    method: "DELETE",
+  });
+
 export const updateWorkspace = (
   workspaceId: string,
   data: Partial<{

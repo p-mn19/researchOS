@@ -65,6 +65,172 @@ function formatLabel(format: DocumentFormat): string {
     : "Normal single-column";
 }
 
+function createIeeeEditableDocument(
+  body: string,
+  includeBibliography: boolean,
+): string {
+  const { abstract, documentBody } = extractAbstractDraft(body);
+  const bibliography = includeBibliography
+    ? String.raw`
+
+\nocite{*}
+\bibliographystyle{IEEEtran}
+\bibliography{references}`
+    : "";
+
+  return String.raw`\documentclass[conference]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{balance}
+\usepackage{float}
+
+% Replace each bracketed placeholder before submitting your paper.
+\title{A Research Study on [Research Topic]}
+
+\author{
+\IEEEauthorblockN{[Author Name]}
+\IEEEauthorblockA{
+\textit{[Department or School]} \\
+\textit{[Institution or University]} \\
+{[City, Country]} \\
+{[author.email@example.com]}}
+\and
+\IEEEauthorblockN{[Author Name]}
+\IEEEauthorblockA{
+\textit{[Department or School]} \\
+\textit{[Institution or University]} \\
+{[City, Country]} \\
+{[author.email@example.com]}}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+${abstract || "Replace this text with a concise abstract that states the research problem, method, principal result, and contribution of the paper."}
+\end{abstract}
+
+\begin{IEEEkeywords}
+[keyword one], [keyword two], [keyword three]
+\end{IEEEkeywords}
+
+${documentBody}${bibliography}
+
+\end{document}
+`;
+}
+
+function createNormalEditableDocument(
+  body: string,
+  includeBibliography: boolean,
+): string {
+  const { abstract, documentBody } = extractAbstractDraft(body);
+  const bibliography = includeBibliography
+    ? String.raw`
+
+\nocite{*}
+\bibliographystyle{plain}
+\bibliography{references}`
+    : "";
+
+  return String.raw`\documentclass[12pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{float}
+
+% Replace each bracketed placeholder before submitting your paper.
+\title{A Research Study on [Research Topic]}
+\author{[Author Name] \\
+\textit{[Department or School]} \\
+\textit{[Institution or University]} \\
+{[author.email@example.com]}}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+${abstract || "Replace this text with a concise abstract that states the research problem, method, principal result, and contribution of the paper."}
+\end{abstract}
+
+\noindent\textbf{Keywords:} [keyword one], [keyword two], [keyword three]
+
+${documentBody}${bibliography}
+
+\end{document}
+`;
+}
+
+function hasDocumentPreamble(latexCode: string): boolean {
+  return /\\documentclass(?:\[[^\]]*\])?\{[^}]+\}/.test(
+    latexCode,
+  );
+}
+
+function documentClassFor(format: DocumentFormat): string {
+  return format === "ieee"
+    ? String.raw`\documentclass[conference]{IEEEtran}`
+    : String.raw`\documentclass[12pt,a4paper]{article}`;
+}
+
+function applyDocumentFormat(
+  latexCode: string,
+  format: DocumentFormat,
+  includeBibliography: boolean,
+): string {
+  if (!hasDocumentPreamble(latexCode)) {
+    return format === "ieee"
+      ? createIeeeEditableDocument(latexCode, includeBibliography)
+      : createNormalEditableDocument(latexCode, includeBibliography);
+  }
+
+  // Keep the user's title, authors, abstract, and paper content intact while
+  // changing the document class that determines the column layout.
+  return latexCode.replace(
+    /\\documentclass(?:\[[^\]]*\])?\{[^}]+\}/,
+    documentClassFor(format),
+  );
+}
+
+function extractAbstractDraft(body: string): {
+  abstract: string;
+  documentBody: string;
+} {
+  const abstractSection = /\\section\{Abstract\}\s*([\s\S]*?)(?=\\section\{|$)/;
+  const match = body.match(abstractSection);
+
+  if (!match) {
+    return {
+      abstract: "",
+      documentBody: body.trim(),
+    };
+  }
+
+  return {
+    abstract: match[1].trim(),
+    documentBody: body.replace(abstractSection, "").trim(),
+  };
+}
+
 export function LatexWorkspacePanel({
   workspaceId,
   initialLatexCode,
@@ -90,8 +256,14 @@ export function LatexWorkspacePanel({
   const pdfUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setLatexCode(initialLatexCode);
-  }, [initialLatexCode]);
+    setLatexCode(
+      applyDocumentFormat(
+        initialLatexCode,
+        initialDocumentFormat,
+        Boolean(referencesBib.trim()),
+      ),
+    );
+  }, [initialDocumentFormat, initialLatexCode, referencesBib]);
 
   useEffect(() => {
     setDocumentFormat(initialDocumentFormat);
@@ -182,12 +354,20 @@ export function LatexWorkspacePanel({
     }
 
     const confirmed = window.confirm(
-      `Switch to ${formatLabel(nextFormat)}? Review the LaTeX preamble after changing the format.`,
+      `Switch to ${formatLabel(nextFormat)}? The document class will be updated automatically.`,
     );
 
     if (!confirmed) {
       return;
     }
+
+    setLatexCode(
+      applyDocumentFormat(
+        latexCode,
+        nextFormat,
+        Boolean(referencesBib.trim()),
+      ),
+    );
 
     setDocumentFormat(nextFormat);
     replacePdfUrl(null);
@@ -334,7 +514,8 @@ export function LatexWorkspacePanel({
         <span className="font-semibold">
           Active layout: {formatLabel(documentFormat)}.
         </span>{" "}
-        The selected layout is included in save and compile requests.
+        The title, author placeholders, abstract, and keywords are editable
+        in the source on the left.
       </div>
 
       <LatexCompileErrors

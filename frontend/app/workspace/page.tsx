@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
@@ -45,6 +45,7 @@ function formatLabel(documentFormat: DocumentFormat): string {
 export default function LatexWorkspacePage() {
   const params = useParams<{ workspaceId?: string }>();
   const workspaceId = params.workspaceId;
+  const router = useRouter();
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [version, setVersion] = useState<WorkspaceVersion | null>(null);
@@ -55,8 +56,7 @@ export default function LatexWorkspacePage() {
   useEffect(() => {
     async function loadSavedManuscript() {
       if (!workspaceId) {
-        setError("No workspace ID was provided.");
-        setLoading(false);
+        router.replace("/research-workspace");
         return;
       }
 
@@ -95,7 +95,7 @@ export default function LatexWorkspacePage() {
     }
 
     void loadSavedManuscript();
-  }, [workspaceId]);
+  }, [router, workspaceId]);
 
   async function handleSave(
     latexCode: string,

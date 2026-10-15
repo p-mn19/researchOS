@@ -8,10 +8,15 @@ import {
   FileText,
   FileType2,
   Loader2,
+  Trash2,
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app_shell";
-import { getWorkspaceVersions, getWorkspaces } from "@/lib/api";
+import {
+  deleteWorkspace,
+  getWorkspaceVersions,
+  getWorkspaces,
+} from "@/lib/api";
 import type {
   DocumentFormat,
   Workspace,
@@ -57,6 +62,7 @@ export default function LatexWorkspaceIndexPage() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deletingWorkspaceId, setDeletingWorkspaceId] = useState("");
 
   useEffect(() => {
     async function loadSavedWorkspaces() {
@@ -110,6 +116,29 @@ export default function LatexWorkspaceIndexPage() {
 
     void loadSavedWorkspaces();
   }, []);
+
+  async function handleDeleteWorkspace(workspace: Workspace) {
+    const confirmed = window.confirm(
+      `Delete "${workspace.title}" and all of its saved manuscript versions? This cannot be undone.`,
+    );
+
+    if (!confirmed || deletingWorkspaceId) {
+      return;
+    }
+
+    try {
+      setDeletingWorkspaceId(workspace.id);
+      setError("");
+      await deleteWorkspace(workspace.id);
+      setSavedWorkspaces((current) =>
+        current.filter((item) => item.workspace.id !== workspace.id),
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setDeletingWorkspaceId("");
+    }
+  }
 
   return (
     <AppShell>
@@ -199,15 +228,33 @@ export default function LatexWorkspaceIndexPage() {
                         : "Uses the normal article layout with one column."}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        router.push(`/workspace/${workspace.id}/latex`)
-                      }
-                      className="mt-5 inline-flex rounded-xl bg-violet-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-800"
-                    >
-                      Open manuscript
-                    </button>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(`/workspace/${workspace.id}/latex`)
+                        }
+                        disabled={Boolean(deletingWorkspaceId)}
+                        className="inline-flex rounded-xl bg-violet-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                      >
+                        Open manuscript
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleDeleteWorkspace(workspace)
+                        }
+                        disabled={Boolean(deletingWorkspaceId)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label={`Delete ${workspace.title}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {deletingWorkspaceId === workspace.id
+                          ? "Deleting..."
+                          : "Delete"}
+                      </button>
+                    </div>
                   </article>
                 );
               },
