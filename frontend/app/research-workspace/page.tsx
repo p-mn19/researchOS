@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app_shell";
+import { AiResponseTime } from "@/components/ui/ai-response-time";
 import {
   createWorkspace,
   generateWorkspaceContent,
@@ -328,6 +329,7 @@ export default function WorkspacePage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generationTime, setGenerationTime] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [error, setError] = useState("");
@@ -602,6 +604,9 @@ export default function WorkspacePage() {
       setError("");
       setNotice("");
       resetCurrentSectionPreview();
+      setGenerationTime(null);
+
+      const startedAt = Date.now();
 
       const result =
         await generateWorkspaceContent(
@@ -614,6 +619,8 @@ export default function WorkspacePage() {
             instructions: instructions.trim(),
           },
         );
+
+      setGenerationTime(Date.now() - startedAt);
 
       if (latexSectionExists(manuscriptLatex, result.title)) {
         setError(
@@ -1316,6 +1323,13 @@ export default function WorkspacePage() {
                         Edit the most recent section preview. Current draft:{" "}
                         {generatedWordCount} words.
                       </p>
+
+                      <div className="mt-2">
+                        <AiResponseTime
+                          milliseconds={generationTime}
+                          label="Section generated"
+                        />
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2">

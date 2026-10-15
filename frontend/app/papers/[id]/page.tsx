@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app_shell";
+import { AiResponseTime } from "@/components/ui/ai-response-time";
 import {
   askPaper,
   extractPaper,
@@ -633,6 +634,9 @@ export default function PaperDetailPage() {
   const [answerSources, setAnswerSources] =
     useState<AnswerSource[]>([]);
 
+  const [answerResponseTime, setAnswerResponseTime] =
+    useState<number | null>(null);
+
   const [loading, setLoading] =
     useState(true);
 
@@ -1022,6 +1026,9 @@ export default function PaperDetailPage() {
       setAnswering(true);
       setErrorText("");
       setResults([]);
+      setAnswerResponseTime(null);
+
+      const startedAt = Date.now();
 
       const response =
         await askPaper(
@@ -1030,6 +1037,7 @@ export default function PaperDetailPage() {
           5
         );
 
+      setAnswerResponseTime(Date.now() - startedAt);
       setAnswer(
         response.answer ||
           "No answer was generated."
@@ -1631,6 +1639,10 @@ export default function PaperDetailPage() {
                     <h3 className="text-lg font-semibold text-slate-900">
                       AI research assistant
                     </h3>
+                  </div>
+
+                  <div className="mt-2">
+                    <AiResponseTime milliseconds={answerResponseTime} />
                   </div>
 
                   <div className="ai-answer mt-4 break-words text-sm leading-7 text-slate-700">

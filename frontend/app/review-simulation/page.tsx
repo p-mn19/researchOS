@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/layout/app_shell";
+import { AiResponseTime } from "@/components/ui/ai-response-time";
 import { generateReview, getPapers } from "@/lib/api";
 import {
   Paper,
@@ -191,6 +192,8 @@ export default function ReviewSimulationPage() {
     useState<ReviewDimension | null>(null);
   const [loadingPapers, setLoadingPapers] = useState(true);
   const [loadingReview, setLoadingReview] = useState(false);
+  const [reviewGenerationTime, setReviewGenerationTime] =
+    useState<number | null>(null);
   const [error, setError] = useState("");
   const [showReviewGuide, setShowReviewGuide] = useState(false);
 
@@ -233,8 +236,12 @@ export default function ReviewSimulationPage() {
       setError("");
       setReport(null);
       setSelectedDimension(null);
+      setReviewGenerationTime(null);
+
+      const startedAt = Date.now();
 
       const data = await generateReview(selectedPaperId);
+      setReviewGenerationTime(Date.now() - startedAt);
       setReport(data);
 
       if (data.dimensions && data.dimensions.length > 0) {
@@ -375,6 +382,13 @@ export default function ReviewSimulationPage() {
                     <h2 className="break-words text-2xl font-semibold leading-8 text-slate-900">
                       {report.paperTitle}
                     </h2>
+
+                    <div className="mt-2">
+                      <AiResponseTime
+                        milliseconds={reviewGenerationTime}
+                        label="Review generated"
+                      />
+                    </div>
                   </div>
 
                   <div className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50 px-5 py-3 font-semibold text-indigo-700">

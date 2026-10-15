@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app_shell";
+import { AiResponseTime } from "@/components/ui/ai-response-time";
 import { analyzeIdeation, getPapers } from "@/lib/api";
 import type {
   IdeationResponse,
@@ -89,6 +90,7 @@ export default function IdeationPage() {
   const [savedIdeas, setSavedIdeas] = useState<ResearchIdea[]>([]);
   const [loadingPapers, setLoadingPapers] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generationTime, setGenerationTime] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -210,6 +212,9 @@ export default function IdeationPage() {
       setGenerating(true);
       setError("");
       setNotice("");
+      setGenerationTime(null);
+
+      const startedAt = Date.now();
 
       const response = await analyzeIdeation({
         paper_ids: selectedPaperIds,
@@ -217,6 +222,7 @@ export default function IdeationPage() {
         idea_count: ideaCount,
       });
 
+      setGenerationTime(Date.now() - startedAt);
       setResult(response);
 
       if (response.ideas.length === 0) {
@@ -454,6 +460,13 @@ export default function IdeationPage() {
                   {result.corpus_size === 1 ? "" : "s"}{" "}
                   using {result.model}.
                 </p>
+
+                <div className="mt-2">
+                  <AiResponseTime
+                    milliseconds={generationTime}
+                    label="Ideas generated"
+                  />
+                </div>
               </div>
 
               <div className="grid gap-4 lg:grid-cols-3">
